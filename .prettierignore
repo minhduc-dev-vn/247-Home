@@ -1,0 +1,11 @@
+.next/
+coverage/
+docs/
+node_modules/
+playwright-report/
+test-results/
+.local-outbox/
+AGENTS.md
+next-env.d.ts
+pnpm-lock.yaml
+*.tsbuildinfo

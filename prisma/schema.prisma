@@ -1,0 +1,583 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// This technical marker is the only Slice 1 table. Business tables begin in their owning slices.
+model BootstrapMarker {
+  id        String   @id
+  label     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("bootstrap_markers")
+}
+
+enum RoleCode {
+  CUSTOMER
+  STAFF
+  TECHNICIAN
+  MANAGER
+  ADMIN
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProductCategory {
+  SECURITY_CAMERA
+  VIDEO_DOORBELL
+  MESH_WIFI
+  SMART_LOCK
+}
+
+enum CartStatus {
+  ACTIVE
+  CHECKED_OUT
+}
+
+enum OrderStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  PROCESSING
+  READY_FOR_INSTALLATION
+  INSTALLATION_IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InventoryDisposition {
+  RESERVED
+  CONSUMED
+  RELEASED
+}
+
+enum PaymentMethod {
+  COD
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  ASSIGNMENT_PENDING
+  ASSIGNED
+  CONFIRMED
+  EN_ROUTE
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  RESCHEDULE_REQUIRED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum WarrantyStatus {
+  SUBMITTED
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+model User {
+  id                       String               @id @default(cuid())
+  email                    String               @unique
+  name                     String
+  passwordHash             String               @map("password_hash")
+  emailVerifiedAt          DateTime?            @map("email_verified_at")
+  authVersion              Int                  @default(1) @map("auth_version")
+  isActive                 Boolean              @default(true) @map("is_active")
+  createdAt                DateTime             @default(now()) @map("created_at")
+  updatedAt                DateTime             @updatedAt @map("updated_at")
+  roles                    UserRole[]
+  resetTokens              PasswordResetToken[]
+  auditLogs                AuditLog[]
+  addresses                Address[]
+  carts                    Cart[]
+  orders                   Order[]
+  checkoutAttempts         CheckoutAttempt[]
+  technicianProfile        Technician?
+  warrantyRequests         WarrantyRequest[]    @relation("WarrantyCustomer")
+  assignedWarrantyRequests WarrantyRequest[]    @relation("WarrantyAssignee")
+
+  @@map("users")
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String
+  description String
+  category    ProductCategory
+  status      ProductStatus    @default(DRAFT)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  variants    ProductVariant[]
+  images      ProductImage[]
+
+  @@index([status, category, createdAt])
+  @@map("products")
+}
+
+model ProductVariant {
+  id                   String                @id @default(cuid())
+  productId            String                @map("product_id")
+  sku                  String                @unique
+  name                 String
+  priceVnd             BigInt                @map("price_vnd")
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  product              Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  inventory            Inventory?
+  servicePackages      ServicePackage[]
+  cartItems            CartItem[]
+  orderItems           OrderItem[]
+  inventoryAllocations InventoryAllocation[]
+
+  @@index([productId, isActive])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id         String   @id @default(cuid())
+  productId  String   @map("product_id")
+  storageKey String   @unique @map("storage_key")
+  altText    String   @map("alt_text")
+  mimeType   String   @map("mime_type")
+  byteSize   Int      @map("byte_size")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, sortOrder])
+  @@map("product_images")
+}
+
+model Inventory {
+  productVariantId String         @id @map("product_variant_id")
+  onHand           Int            @default(0) @map("on_hand")
+  reserved         Int            @default(0)
+  version          Int            @default(1)
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+
+  @@map("inventory")
+}
+
+model ServicePackage {
+  id               String         @id @default(cuid())
+  productVariantId String         @map("product_variant_id")
+  name             String
+  description      String
+  priceVnd         BigInt         @map("price_vnd")
+  isActive         Boolean        @default(true) @map("is_active")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  productVariant   ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+
+  @@index([productVariantId, isActive])
+  @@map("service_packages")
+}
+
+model ServiceArea {
+  id              String                    @id @default(cuid())
+  code            String                    @unique
+  provinceCode    String                    @map("province_code")
+  provinceName    String                    @map("province_name")
+  districtCode    String                    @map("district_code")
+  districtName    String                    @map("district_name")
+  isActive        Boolean                   @default(true) @map("is_active")
+  installationFee BigInt                    @default(0) @map("installation_fee_vnd")
+  shippingFee     BigInt                    @default(0) @map("shipping_fee_vnd")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  addresses       Address[]
+  slots           InstallationSlot[]
+  orders          Order[]
+  appointments    InstallationAppointment[]
+  technicians     TechnicianServiceArea[]
+
+  @@unique([provinceCode, districtCode])
+  @@index([isActive, provinceCode, districtCode])
+  @@map("service_areas")
+}
+
+model Address {
+  id            String       @id @default(cuid())
+  userId        String       @map("user_id")
+  recipientName String       @map("recipient_name")
+  phone         String
+  line1         String
+  line2         String?      @map("line2")
+  wardName      String       @map("ward_name")
+  districtCode  String       @map("district_code")
+  districtName  String       @map("district_name")
+  provinceCode  String       @map("province_code")
+  provinceName  String       @map("province_name")
+  postalCode    String?      @map("postal_code")
+  countryCode   String       @default("VN") @map("country_code")
+  serviceAreaId String?      @map("service_area_id")
+  isDefault     Boolean      @default(false) @map("is_default")
+  archivedAt    DateTime?    @map("archived_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  user          User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  serviceArea   ServiceArea? @relation(fields: [serviceAreaId], references: [id], onDelete: SetNull)
+
+  @@index([userId, archivedAt])
+  /// Partial unique index `addresses_one_default_per_user` is managed by SQL migration.
+  @@map("addresses")
+}
+
+model Cart {
+  id                String     @id @default(cuid())
+  userId            String     @map("user_id")
+  status            CartStatus @default(ACTIVE)
+  currency          String     @default("VND")
+  checkedOutOrderId String?    @unique @map("checked_out_order_id")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  version           Int        @default(1)
+  user              User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items             CartItem[]
+  checkedOutOrder   Order?     @relation("CheckedOutCart", fields: [checkedOutOrderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@map("carts")
+}
+
+model CartItem {
+  id               String          @id @default(cuid())
+  cartId           String          @map("cart_id")
+  productVariantId String          @map("product_variant_id")
+  servicePackageId String?         @map("service_package_id")
+  quantity         Int
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+  cart             Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productVariant   ProductVariant  @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  servicePackage   ServicePackage? @relation(fields: [servicePackageId], references: [id], onDelete: Restrict)
+
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model InstallationSlot {
+  id            String                    @id @default(cuid())
+  serviceAreaId String                    @map("service_area_id")
+  startsAt      DateTime                  @map("starts_at")
+  endsAt        DateTime                  @map("ends_at")
+  capacity      Int
+  bookedCount   Int                       @default(0) @map("booked_count")
+  isActive      Boolean                   @default(true) @map("is_active")
+  version       Int                       @default(1)
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  updatedAt     DateTime                  @updatedAt @map("updated_at")
+  serviceArea   ServiceArea               @relation(fields: [serviceAreaId], references: [id], onDelete: Restrict)
+  appointments  InstallationAppointment[]
+
+  @@unique([serviceAreaId, startsAt, endsAt])
+  @@index([serviceAreaId, startsAt, isActive])
+  @@map("installation_slots")
+}
+
+model Order {
+  id                 String                   @id @default(cuid())
+  orderNumber        String                   @unique @map("order_number")
+  userId             String                   @map("user_id")
+  status             OrderStatus              @default(PENDING_CONFIRMATION)
+  currency           String                   @default("VND")
+  subtotal           BigInt
+  installationFee    BigInt                   @map("installation_fee")
+  shippingFee        BigInt                   @map("shipping_fee")
+  discountTotal      BigInt                   @default(0) @map("discount_total")
+  grandTotal         BigInt                   @map("grand_total")
+  recipientName      String                   @map("recipient_name")
+  recipientPhone     String                   @map("recipient_phone")
+  addressLine1       String                   @map("address_line1")
+  addressLine2       String?                  @map("address_line2")
+  wardName           String                   @map("ward_name")
+  districtCode       String                   @map("district_code")
+  districtName       String                   @map("district_name")
+  provinceCode       String                   @map("province_code")
+  provinceName       String                   @map("province_name")
+  postalCode         String?                  @map("postal_code")
+  countryCode        String                   @map("country_code")
+  serviceAreaId      String?                  @map("service_area_id")
+  idempotencyHash    String                   @map("idempotency_hash")
+  requestFingerprint String                   @map("request_fingerprint")
+  inventoryStatus    InventoryDisposition     @default(RESERVED) @map("inventory_status")
+  cancellationReason String?                  @map("cancellation_reason")
+  confirmedAt        DateTime?                @map("confirmed_at")
+  completedAt        DateTime?                @map("completed_at")
+  cancelledAt        DateTime?                @map("cancelled_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+  version            Int                      @default(1)
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  serviceArea        ServiceArea?             @relation(fields: [serviceAreaId], references: [id], onDelete: SetNull)
+  items              OrderItem[]
+  payment            Payment?
+  appointment        InstallationAppointment?
+  checkedOutCart     Cart?                    @relation("CheckedOutCart")
+  checkoutAttempt    CheckoutAttempt?
+
+  @@unique([userId, idempotencyHash])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                  String               @id @default(cuid())
+  orderId             String               @map("order_id")
+  productVariantId    String               @map("product_variant_id")
+  servicePackageId    String?              @map("service_package_id")
+  productName         String               @map("product_name")
+  variantName         String               @map("variant_name")
+  sku                 String
+  servicePackageName  String?              @map("service_package_name")
+  quantity            Int
+  deviceUnitPrice     BigInt               @map("device_unit_price")
+  serviceUnitPrice    BigInt               @map("service_unit_price")
+  unitPrice           BigInt               @map("unit_price")
+  lineTotal           BigInt               @map("line_total")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  order               Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  productVariant      ProductVariant       @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  servicePackage      ServicePackage?      @relation(fields: [servicePackageId], references: [id], onDelete: Restrict)
+  warrantyRequests    WarrantyRequest[]
+  inventoryAllocation InventoryAllocation?
+
+  @@index([orderId])
+  @@index([productVariantId])
+  @@map("order_items")
+}
+
+model InventoryAllocation {
+  id               String               @id @default(cuid())
+  orderItemId      String               @unique @map("order_item_id")
+  productVariantId String               @map("product_variant_id")
+  quantity         Int
+  status           InventoryDisposition @default(RESERVED)
+  reservedAt       DateTime             @default(now()) @map("reserved_at")
+  consumedAt       DateTime?            @map("consumed_at")
+  releasedAt       DateTime?            @map("released_at")
+  orderItem        OrderItem            @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  productVariant   ProductVariant       @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+
+  @@index([productVariantId, status])
+  @@map("inventory_allocations")
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  orderId               String        @unique @map("order_id")
+  method                PaymentMethod
+  status                PaymentStatus @default(PENDING)
+  amount                BigInt
+  currency              String        @default("VND")
+  referenceCode         String        @unique @map("reference_code")
+  confirmationReference String?       @map("confirmation_reference")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  version               Int           @default(1)
+  order                 Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@map("payments")
+}
+
+model InstallationAppointment {
+  id                 String                 @id @default(cuid())
+  orderId            String                 @unique @map("order_id")
+  serviceAreaId      String                 @map("service_area_id")
+  slotId             String                 @map("installation_slot_id")
+  status             AppointmentStatus      @default(SCHEDULED)
+  scheduledStartAt   DateTime               @map("scheduled_start_at")
+  scheduledEndAt     DateTime               @map("scheduled_end_at")
+  customerNote       String?                @map("customer_note")
+  capacityReleasedAt DateTime?              @map("capacity_released_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  version            Int                    @default(1)
+  order              Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  serviceArea        ServiceArea            @relation(fields: [serviceAreaId], references: [id], onDelete: Restrict)
+  slot               InstallationSlot       @relation(fields: [slotId], references: [id], onDelete: Restrict)
+  assignments        TechnicianAssignment[]
+
+  @@index([serviceAreaId, scheduledStartAt, status])
+  @@index([slotId, status])
+  @@map("installation_appointments")
+}
+
+model Technician {
+  id           String                  @id @default(cuid())
+  userId       String                  @unique @map("user_id")
+  isActive     Boolean                 @default(true) @map("is_active")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments  TechnicianAssignment[]
+  serviceAreas TechnicianServiceArea[]
+
+  @@map("technicians")
+}
+
+model TechnicianServiceArea {
+  technicianId  String      @map("technician_id")
+  serviceAreaId String      @map("service_area_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  technician    Technician  @relation(fields: [technicianId], references: [id], onDelete: Cascade)
+  serviceArea   ServiceArea @relation(fields: [serviceAreaId], references: [id], onDelete: Cascade)
+
+  @@id([technicianId, serviceAreaId])
+  @@index([serviceAreaId, technicianId])
+  @@map("technician_service_areas")
+}
+
+model TechnicianAssignment {
+  id               String                  @id @default(cuid())
+  appointmentId    String                  @map("installation_appointment_id")
+  technicianId     String                  @map("technician_id")
+  status           AssignmentStatus        @default(ACTIVE)
+  completionNote   String?                 @map("completion_note")
+  assignedAt       DateTime                @default(now()) @map("assigned_at")
+  acceptedAt       DateTime?               @map("accepted_at")
+  enRouteAt        DateTime?               @map("en_route_at")
+  arrivedAt        DateTime?               @map("arrived_at")
+  startedAt        DateTime?               @map("started_at")
+  completedAt      DateTime?               @map("completed_at")
+  scheduledStartAt DateTime                @map("scheduled_start_at")
+  scheduledEndAt   DateTime                @map("scheduled_end_at")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  appointment      InstallationAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  technician       Technician              @relation(fields: [technicianId], references: [id], onDelete: Restrict)
+  evidence         InstallationEvidence[]
+
+  @@index([technicianId, status])
+  @@index([appointmentId, status])
+  @@map("technician_assignments")
+}
+
+model InstallationEvidence {
+  id           String               @id @default(cuid())
+  assignmentId String               @map("assignment_id")
+  storageKey   String               @unique @map("storage_key")
+  mimeType     String               @map("mime_type")
+  byteSize     Int                  @map("byte_size")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  assignment   TechnicianAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+
+  @@index([assignmentId])
+  @@map("installation_evidence")
+}
+
+model WarrantyRequest {
+  id                  String         @id @default(cuid())
+  requestNumber       String         @unique @map("request_number")
+  orderItemId         String         @map("order_item_id")
+  customerUserId      String         @map("customer_user_id")
+  status              WarrantyStatus @default(SUBMITTED)
+  issueType           String         @map("issue_type")
+  description         String
+  assignedStaffUserId String?        @map("assigned_staff_user_id")
+  submittedAt         DateTime       @default(now()) @map("submitted_at")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  orderItem           OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  customer            User           @relation("WarrantyCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  assignedStaff       User?          @relation("WarrantyAssignee", fields: [assignedStaffUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@map("warranty_requests")
+}
+
+model CheckoutAttempt {
+  id                 String   @id @default(cuid())
+  userId             String   @map("user_id")
+  idempotencyHash    String   @map("idempotency_hash")
+  requestFingerprint String   @map("request_fingerprint")
+  orderId            String?  @unique @map("order_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order              Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, idempotencyHash])
+  @@map("checkout_attempts")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String   @map("actor_user_id")
+  action      String
+  targetType  String   @map("target_type")
+  targetId    String   @map("target_id")
+  before      Json     @map("before_json")
+  after       Json     @map("after_json")
+  reason      String?
+  requestId   String   @map("request_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  actor       User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@map("audit_logs")
+}
+
+model Role {
+  id        String     @id @default(cuid())
+  code      RoleCode   @unique
+  createdAt DateTime   @default(now()) @map("created_at")
+  users     UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId, userId])
+  @@map("user_roles")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("password_reset_tokens")
+}
