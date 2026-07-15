@@ -142,17 +142,22 @@ Ngoài mọi mục task liên quan:
 - [ ] CI trên branch/PR đạt.
 - [ ] Không có Critical/High defect chưa có quyết định chấp nhận bằng văn bản.
 
-## 4. Definition of Done cho MVP nội bộ
+## 4. Definition of Done cho staging MVP đã freeze
+
+Phạm vi release hiện tại được chốt tại `docs/MVP_SCOPE_FREEZE.md`. Checklist
+bên dưới chỉ áp dụng cho capability Included. Customer warranty, warranty
+mutation, customer cancellation, admin role management và admin
+installation-slot CRUD là Deferred và không chặn staging release này.
 
 ### Product
 
 - [ ] Catalog đủ năm nhóm MVP.
 - [ ] Customer kiểm tra khu vực, quản lý cart/address, chọn slot và checkout.
 - [ ] COD và chuyển khoản thủ công hoạt động đúng policy.
-- [ ] Customer theo dõi order/installation và gửi warranty.
-- [ ] Admin quản lý catalog, inventory, area, order, payment, technician, assignment, installation, warranty và audit.
+- [ ] Customer theo dõi order/installation; customer warranty là deferred.
+- [ ] Admin quản lý catalog, inventory, area, order, payment, technician, assignment, installation và audit; warranty queue hiện read-only.
 - [ ] Technician chỉ xử lý công việc được phân công.
-- [ ] Mọi P0 trong `PRODUCT_REQUIREMENTS.md` trace được đến test.
+- [ ] Mọi P0 Included trong `MVP_SCOPE_FREEZE.md` trace được đến test.
 
 ### Integrity và concurrency
 

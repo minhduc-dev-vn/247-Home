@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import { createHash } from 'node:crypto';
 
 const roleCodes = [
   'CUSTOMER',
@@ -9,6 +10,10 @@ const roleCodes = [
   'ADMIN',
 ] as const;
 const demoPassword = 'LocalDemoOnly-247Home';
+
+function deterministicSeedCuid(scope: string, value: string) {
+  return `c${createHash('sha256').update(`${scope}:${value}`).digest('hex').slice(0, 24)}`;
+}
 
 const demoProducts = [
   [
@@ -356,11 +361,36 @@ async function main() {
     ],
   ] as const;
   const seededPackages = await Promise.all(
-    packages.map(([variant, name, description, priceVnd]) =>
-      prisma.servicePackage.upsert({
-        where: { id: `seed-${variant.sku}` },
+    packages.map(async ([variant, name, description, priceVnd]) => {
+      const id = deterministicSeedCuid('service-package', variant.sku);
+      const legacyId = `seed-${variant.sku}`;
+      const [currentPackage, legacyPackage] = await Promise.all([
+        prisma.servicePackage.findUnique({
+          where: { id },
+          select: { id: true },
+        }),
+        prisma.servicePackage.findUnique({
+          where: { id: legacyId },
+          select: { id: true },
+        }),
+      ]);
+
+      if (!currentPackage && legacyPackage) {
+        await prisma.servicePackage.update({
+          where: { id: legacyId },
+          data: { id },
+        });
+      } else if (currentPackage && legacyPackage) {
+        await prisma.servicePackage.update({
+          where: { id: legacyId },
+          data: { isActive: false },
+        });
+      }
+
+      return prisma.servicePackage.upsert({
+        where: { id },
         create: {
-          id: `seed-${variant.sku}`,
+          id,
           productVariantId: variant.id,
           name,
           description,
@@ -373,8 +403,8 @@ async function main() {
           priceVnd,
           isActive: true,
         },
-      }),
-    ),
+      });
+    }),
   );
 
   const areas = [

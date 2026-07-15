@@ -2,15 +2,15 @@
 
 Ứng dụng thương mại điện tử bán thiết bị nhà thông minh và an ninh gia đình kèm dịch vụ lắp đặt tận nơi.
 
-> Trạng thái: **System health remediation**. Catalog, Identity, Cart, Checkout,
-> Order, manual Payment và phần Operations được liệt kê tại mục 20 đã có; chưa
-> có production deployment.
+> Trạng thái: **staging release candidate**. Phạm vi acceptance đã được freeze
+> tại [`docs/MVP_SCOPE_FREEZE.md`](docs/MVP_SCOPE_FREEZE.md); chưa có production
+> deployment.
 
-## 1. Phạm vi MVP
+## 1. Phạm vi staging MVP đã freeze
 
-Mục này mô tả phạm vi sản phẩm mục tiêu. Phạm vi đã triển khai và các khoảng
-trống còn lại được ghi riêng tại mục 19-20; không suy diễn endpoint từ danh sách
-mục tiêu này.
+Release staging này chỉ nghiệm thu các capability đã triển khai và được liệt kê
+trong [`docs/MVP_SCOPE_FREEZE.md`](docs/MVP_SCOPE_FREEZE.md). Product
+Requirements rộng hơn là roadmap, không phải claim rằng endpoint đã tồn tại.
 
 ### Sản phẩm
 
@@ -28,7 +28,6 @@ mục tiêu này.
 - Chọn ngày/khung giờ lắp đặt.
 - Đặt hàng bằng COD hoặc chuyển khoản thủ công.
 - Theo dõi đơn và lịch lắp đặt.
-- Gửi/theo dõi yêu cầu bảo hành.
 
 ### Operations
 
@@ -36,8 +35,11 @@ mục tiêu này.
 - Quản lý vùng phục vụ; capacity slot hiện được thực thi ở checkout/database.
 - Quản lý order/payment và lịch lắp đặt.
 - Quản lý/phân công kỹ thuật viên.
-- Xem hàng đợi và chi tiết bảo hành mẫu.
+- Xem hàng đợi và chi tiết bảo hành đã có sẵn (read-only).
 - Xem audit log theo quyền.
+
+Deferred khỏi staging MVP: customer warranty API, warranty mutation, customer
+order cancellation, admin role management và admin installation-slot CRUD.
 
 Ngoài MVP: payment gateway thật, lưu thông tin thẻ, microservices, mobile native và production deployment.
 
@@ -382,7 +384,7 @@ The migration is additive and does not alter Identity tables. Do not delete cata
   `RateLimiter` adapter before horizontal scaling.
 - Customer warranty create/list/detail, warranty state mutations, customer
   order cancellation, admin role management and admin installation-slot CRUD
-  are documented target scope but are not exposed by the current routes.
+  are deferred khỏi staging MVP và không được expose bởi route hiện tại.
 
 ## 20. Scope after Slice 3
 
@@ -391,3 +393,5 @@ The migration is additive and does not alter Identity tables. Do not delete cata
   assignment/reschedule, technician workflow/evidence, read-only warranty queue
   and audit browsing. It does not provide warranty mutations or slot CRUD.
 - Chưa có production deployment, production credential hay payment gateway.
+- Staging vận hành theo single-instance assumption và runbook tại
+  [`docs/STAGING_OPERATIONS_RUNBOOK.md`](docs/STAGING_OPERATIONS_RUNBOOK.md).

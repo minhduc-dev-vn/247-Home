@@ -322,9 +322,13 @@ Không có order/payment/appointment/allocation một phần khi transaction th�
 |---|---|---|
 | GET | `/api/v1/orders` | CUSTOMER own |
 | GET | `/api/v1/orders/{id}` | CUSTOMER own |
-| POST | `/api/v1/orders/{id}/actions/cancel` | CUSTOMER own + state policy |
-| GET | `/api/v1/orders/{id}/installation` | CUSTOMER own |
-| POST | `/api/v1/installation-appointments/{id}/actions/reschedule` | CUSTOMER own + deadline/state |
+| POST | `/api/v1/orders/{id}/actions/cancel` (deferred) | CUSTOMER own + state policy |
+| GET | `/api/v1/orders/{id}/installation` (deferred; current order detail embeds appointment) | CUSTOMER own |
+| POST | `/api/v1/installation-appointments/{id}/actions/reschedule` (deferred) | CUSTOMER own + deadline/state |
+
+Chỉ hai route GET đầu tiên được expose trong staging MVP đã freeze. Các action
+customer còn lại là target contract tương lai và không được client giả định là
+khả dụng.
 
 Cancel body:
 
