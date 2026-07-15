@@ -88,11 +88,13 @@ jobs:
     needs: quality
     runs-on: ubuntu-24.04
     permissions:
+      attestations: write
       contents: read
+      id-token: write
       packages: write
     outputs:
-      digest: ${{ steps.build.outputs.digest }}
-      image: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+      digest: ${{ steps.publish.outputs.digest }}
+      image: ${{ env.IMAGE_NAME }}@${{ steps.publish.outputs.digest }}
     steps:
       - name: Check out immutable release ref
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -122,12 +124,13 @@ jobs:
             org.opencontainers.image.created=${{ steps.source.outputs.created }}
             org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
             org.opencontainers.image.version=${{ env.RELEASE_REF }}
-      - name: Build and publish immutable artifact
+      - name: Build immutable artifact locally
         id: build
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
-          push: true
+          load: true
+          push: false
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
           build-args: |
@@ -136,31 +139,63 @@ jobs:
             GIT_SHA=${{ steps.source.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
       - name: Fail on critical or high image vulnerabilities
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
-          image-ref: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.RELEASE_REF }}
           version: v0.70.0
           format: table
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
+      - name: Generate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.RELEASE_REF }}
+          skip-setup-trivy: true
+          format: cyclonedx
+          output: sbom.cdx.json
+          exit-code: '0'
+      - name: Publish scanned artifact
+        id: publish
+        shell: bash
+        run: |
+          docker push "${IMAGE_NAME}:${RELEASE_REF}"
+          repo_digest=$(docker image inspect "${IMAGE_NAME}:${RELEASE_REF}" --format '{{index .RepoDigests 0}}')
+          case "$repo_digest" in
+            "${IMAGE_NAME}@sha256:"*) ;;
+            *) echo "Registry did not return the expected digest" >&2; exit 1 ;;
+          esac
+          echo "digest=${repo_digest##*@}" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Attest SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true
       - name: Record artifact identity
         shell: bash
         run: |
           {
             echo "release_ref=$RELEASE_REF"
             echo "git_sha=$(git rev-parse HEAD)"
-            echo "image=${IMAGE_NAME}@${{ steps.build.outputs.digest }}"
+            echo "image=${IMAGE_NAME}@${{ steps.publish.outputs.digest }}"
           } | tee artifact-manifest.txt
       - name: Upload artifact manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staging-artifact-manifest-${{ github.run_id }}
-          path: artifact-manifest.txt
+          path: |
+            artifact-manifest.txt
+            sbom.cdx.json
           retention-days: 30
 
   deploy-staging:
