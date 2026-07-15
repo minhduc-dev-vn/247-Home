@@ -13,7 +13,7 @@ Required identity:
 - OCI image digest;
 - UTC build timestamp;
 - OCI revision/version/created labels;
-- SBOM and provenance produced by BuildKit.
+- CycloneDX SBOM and signed GitHub provenance/SBOM attestations.
 
 ## Local reproducibility check
 
@@ -37,10 +37,12 @@ placeholders use `.invalid` endpoints and are not runtime credentials.
 ## Trusted release
 
 `.github/workflows/staging-release.yml` checks out an existing `v*-staging*`
-tag, reruns every quality gate, publishes to
-`ghcr.io/<owner>/<repository>:<release-tag>`, records the digest, emits SBOM and
-provenance, and fails on Critical/High image findings. The deploy job passes the
-exact digest to the staging platform. It never deploys a mutable tag.
+tag, reruns every quality gate, builds locally, fails on Critical/High image
+findings, and generates a CycloneDX SBOM before publication. Only a passing
+image is pushed to `ghcr.io/<owner>/<repository>:<release-tag>`; the workflow
+then records its registry digest and attaches signed provenance/SBOM
+attestations. The deploy job passes the exact digest to the staging platform.
+It never deploys a mutable tag.
 
 Registry requirements:
 
@@ -56,4 +58,3 @@ Registry requirements:
 Before deployment, copy the active digest to the release record as
 `previous_digest`. Verify its schema compatibility and pullability. Rollback
 selects that digest; it does not rebuild an old tag or reverse migrations.
-

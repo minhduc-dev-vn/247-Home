@@ -8,10 +8,12 @@ The release workflow is `.github/workflows/staging-release.yml`.
 2. Install from the frozen pnpm lockfile.
 3. Run dependency audit, migrations, seed in the disposable CI database, lint,
    typecheck, unit, integration, migration-upgrade, E2E, and build gates.
-4. Build once and publish an OCI image to GHCR with SBOM/provenance.
-5. Scan the digest with SHA-pinned Trivy 0.70.0 and fail on fixable
-   Critical/High CVEs.
-6. On an explicit manual deployment, migrate the staging database using the
+4. Build the OCI image locally once.
+5. Scan it with SHA-pinned Trivy 0.70.0, fail on fixable Critical/High CVEs,
+   and generate a CycloneDX SBOM.
+6. Publish only a passing image to GHCR, capture its registry digest, and attach
+   signed provenance/SBOM attestations.
+7. On an explicit manual deployment, migrate the staging database using the
    migration credential, call the platform deploy hook with the exact digest,
    then run HTTPS staging E2E.
 
@@ -38,7 +40,7 @@ digest and wait until the selected revision is healthy.
 ## Trigger
 
 1. Push the reviewed immutable tag to the approved remote.
-2. Let tag CI publish and scan the artifact.
+2. Let tag CI scan, publish and attest the artifact.
 3. Run `Staging release` manually with that same tag and
    `deploy_staging=true`.
 4. Approve the protected environment after checking current/previous digests,
