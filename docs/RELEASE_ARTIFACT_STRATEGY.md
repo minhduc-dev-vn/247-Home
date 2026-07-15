@@ -37,8 +37,10 @@ Tags are discovery labels only. Deployments pin the digest, never a mutable tag.
 7. Deploy the exact digest to staging, then promote that same digest. Do not
    rebuild per environment.
 
-The future Dockerfile and CI publishing job require separate review. Docker
-Compose remains local development tooling and is not the release artifact.
+The reviewed implementation is `Dockerfile` plus
+`.github/workflows/staging-release.yml`; operational commands and bindings are
+defined in `ARTIFACT_RELEASE_PROCESS.md` and `STAGING_CI_CD.md`. Docker Compose
+remains local development tooling and is not the release artifact.
 
 ## Storage and retention
 

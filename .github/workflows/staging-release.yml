@@ -1,0 +1,221 @@
+name: Staging release
+
+on:
+  push:
+    tags:
+      - 'v*-staging*'
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Existing immutable staging Git tag
+        required: true
+        type: string
+      deploy_staging:
+        description: Run migration, deploy the published digest, and validate staging
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: staging-release-${{ github.event.inputs.release_ref || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  NODE_VERSION: 24.14.0
+  PNPM_VERSION: 10.32.1
+  RELEASE_REF: ${{ github.event.inputs.release_ref || github.ref_name }}
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: home247_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d home247_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/home247_test?schema=public
+      NEXTAUTH_SECRET: test-only-auth-secret-at-least-thirty-two-characters
+      NEXTAUTH_URL: http://127.0.0.1:3000
+    steps:
+      - name: Check out immutable release ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.RELEASE_REF }}
+      - name: Require a staging tag
+        shell: bash
+        run: |
+          case "$RELEASE_REF" in
+            v*-staging*) ;;
+            *) echo "release_ref must be an existing v*-staging* tag" >&2; exit 1 ;;
+          esac
+          test "$(git tag --points-at HEAD | grep -Fx "$RELEASE_REF")" = "$RELEASE_REF"
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit:prod
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:integration
+      - run: pnpm test:migration
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm build
+
+  artifact:
+    needs: quality
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      image: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+    steps:
+      - name: Check out immutable release ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.RELEASE_REF }}
+      - name: Resolve source identity
+        id: source
+        shell: bash
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+      - name: Log in to GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate OCI metadata
+        id: metadata
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: type=raw,value=${{ env.RELEASE_REF }}
+          labels: |
+            org.opencontainers.image.created=${{ steps.source.outputs.created }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.version=${{ env.RELEASE_REF }}
+      - name: Build and publish immutable artifact
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ env.RELEASE_REF }}
+            BUILD_TIMESTAMP=${{ steps.source.outputs.created }}
+            GIT_SHA=${{ steps.source.outputs.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+      - name: Fail on critical or high image vulnerabilities
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          version: v0.70.0
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+      - name: Record artifact identity
+        shell: bash
+        run: |
+          {
+            echo "release_ref=$RELEASE_REF"
+            echo "git_sha=$(git rev-parse HEAD)"
+            echo "image=${IMAGE_NAME}@${{ steps.build.outputs.digest }}"
+          } | tee artifact-manifest.txt
+      - name: Upload artifact manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-artifact-manifest-${{ github.run_id }}
+          path: artifact-manifest.txt
+          retention-days: 30
+
+  deploy-staging:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_staging
+    needs: artifact
+    runs-on: ubuntu-24.04
+    environment: staging
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
+      DEPLOY_IMAGE: ${{ needs.artifact.outputs.image }}
+      STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+    steps:
+      - name: Check out immutable release ref
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.RELEASE_REF }}
+      - name: Require external staging bindings
+        shell: bash
+        env:
+          STAGING_DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
+          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$STAGING_DEPLOY_HOOK"
+          test -n "$STAGING_DEPLOY_TOKEN"
+          test -n "$STAGING_BASE_URL"
+          case "$STAGING_BASE_URL" in https://*) ;; *) exit 1 ;; esac
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply forward-only migrations with the migration role
+        run: pnpm db:migrate
+      - name: Deploy exact image digest
+        shell: bash
+        env:
+          STAGING_DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
+          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: |
+          payload=$(jq -n --arg image "$DEPLOY_IMAGE" --arg release "$RELEASE_REF" '{image:$image,release:$release}')
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $STAGING_DEPLOY_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "$payload" \
+            "$STAGING_DEPLOY_HOOK"
+      - name: Install browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Validate deployed HTTPS staging
+        run: pnpm test:e2e:staging

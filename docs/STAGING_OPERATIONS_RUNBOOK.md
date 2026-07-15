@@ -17,10 +17,10 @@ Scope: single-instance staging only; never production
 - Enforce exactly one application instance as required by
   `RATE_LIMITING_STRATEGY.md`.
 
-No `Dockerfile` or deploy workflow is committed. The supported staging handoff
-is a platform Node build (`pnpm install --frozen-lockfile`, `pnpm build`,
-`pnpm start`) or an externally reviewed container definition. Docker Compose is
-local PostgreSQL tooling only.
+The supported staging handoff is the OCI image built by `Dockerfile` and
+published by `.github/workflows/staging-release.yml`. Deploy the exact registry
+digest, never a mutable tag or a platform rebuild. Docker Compose is local
+PostgreSQL tooling only.
 
 Ingress requirements are defined in `STAGING_INGRESS_CONFIGURATION.md`.
 Artifact identity and retention requirements are defined in
