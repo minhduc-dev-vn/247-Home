@@ -10,6 +10,8 @@ Scope: single-instance staging only; never production
 - Provision a new PostgreSQL 16 database; never copy the reused local DB.
 - Store `DATABASE_URL` and a random `NEXTAUTH_SECRET` (minimum 32 characters) in
   the staging platform secret manager, not source or build logs.
+- Configure the S3-compatible evidence provider and private bucket according to
+  `STAGING_SECRET_MANAGEMENT.md`; local storage remains disabled in production.
 - Set `NODE_ENV=production`, the HTTPS `NEXTAUTH_URL` and `APP_ORIGIN`, timezone
   `UTC`, and `TRUST_PROXY_HEADERS` according to the verified ingress contract.
 - Enforce exactly one application instance as required by
@@ -19,6 +21,11 @@ No `Dockerfile` or deploy workflow is committed. The supported staging handoff
 is a platform Node build (`pnpm install --frozen-lockfile`, `pnpm build`,
 `pnpm start`) or an externally reviewed container definition. Docker Compose is
 local PostgreSQL tooling only.
+
+Ingress requirements are defined in `STAGING_INGRESS_CONFIGURATION.md`.
+Artifact identity and retention requirements are defined in
+`RELEASE_ARTIFACT_STRATEGY.md`; database procedures are in
+`DATABASE_RUNBOOK.md`.
 
 ## 2. Deploy
 
@@ -32,6 +39,8 @@ local PostgreSQL tooling only.
    process with a least-privilege runtime credential.
 6. Do not run development seed when `NODE_ENV=production`; use seed only in the
    isolated acceptance environment before promotion.
+7. Before traffic, upload, preview and delete a synthetic evidence object. The
+   object must remain private and fixture cleanup must leave no object residue.
 
 ## 3. Migration
 
@@ -125,5 +134,7 @@ For a bad migration:
 - [ ] Health/readiness, structured log search and alert test passed.
 - [ ] Customer checkout/order, Manager payment/assignment/reschedule and
       Technician evidence workflow smoke-tested.
+- [ ] Evidence bucket is private, storage credentials are prefix-scoped, and
+      failed database persistence deletes the uploaded object.
 - [ ] Deferred routes remain unavailable.
 - [ ] Rollback owner and previous artifact identified.

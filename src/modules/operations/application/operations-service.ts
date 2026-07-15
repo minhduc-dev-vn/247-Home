@@ -12,10 +12,11 @@ import { lockOrder } from '@/modules/commerce/infrastructure/order-repository';
 import { actorHasRole, type IdentityActor } from '@/modules/identity';
 import { authorizeInstallationTransition } from '@/modules/operations/domain/installation-transition';
 import {
-  readLocalEvidence,
-  storeLocalEvidence,
-  type EvidenceInput,
-} from '@/modules/operations/infrastructure/local-evidence-storage';
+  getEvidenceStorage,
+  StorageProviderError,
+  uploadAndPersist,
+  type StorageUploadInput,
+} from '@/modules/storage';
 import {
   lockAppointmentForAssignment,
   lockInstallationAppointment,
@@ -598,16 +599,18 @@ export async function addEvidence(
     select: { id: true },
   });
   if (!assignment) throw new CatalogError('NOT_FOUND');
-  return storeLocalEvidence(
-    input as EvidenceInput,
-    async (staged) =>
+  const storage = getEvidenceStorage();
+  return uploadAndPersist(
+    storage,
+    input as StorageUploadInput,
+    async (uploaded) =>
       prisma.$transaction(async (tx) => {
         const created = await tx.installationEvidence.create({
           data: {
             assignmentId,
-            storageKey: staged.storageKey,
-            mimeType: staged.contentType,
-            byteSize: staged.byteSize,
+            storageKey: uploaded.storageKey,
+            mimeType: uploaded.contentType,
+            byteSize: uploaded.byteSize,
           },
           select: { id: true, mimeType: true, byteSize: true, createdAt: true },
         });
@@ -620,29 +623,14 @@ export async function addEvidence(
             before: {},
             after: {
               evidenceId: created.id,
-              mimeType: staged.contentType,
-              byteSize: staged.byteSize,
+              mimeType: uploaded.contentType,
+              byteSize: uploaded.byteSize,
+              checksumSha256: uploaded.checksumSha256,
             },
             requestId,
           },
         });
         return created;
-      }),
-    (evidence) =>
-      prisma.$transaction(async (tx) => {
-        await tx.installationEvidence.delete({ where: { id: evidence.id } });
-        await tx.auditLog.create({
-          data: {
-            actorUserId: technicianActor.userId,
-            action: 'operations.installation-evidence-compensated',
-            targetType: 'technician_assignment',
-            targetId: assignmentId,
-            before: { evidenceId: evidence.id },
-            after: {},
-            reason: 'Local file finalization failed',
-            requestId,
-          },
-        });
       }),
   );
 }
@@ -657,6 +645,7 @@ export async function getEvidencePreview(
     select: {
       storageKey: true,
       mimeType: true,
+      byteSize: true,
       assignment: { select: { technician: { select: { userId: true } } } },
     },
   });
@@ -666,8 +655,12 @@ export async function getEvidencePreview(
       (actorHasRole(actor, ['TECHNICIAN']) &&
         evidence.assignment.technician.userId === actor.userId));
   if (!canRead || !evidence) throw new CatalogError('NOT_FOUND');
-  const content = await readLocalEvidence(evidence.storageKey);
+  const content = await getEvidenceStorage().download(evidence.storageKey);
   if (!content) throw new CatalogError('NOT_FOUND');
+  if (content.length !== evidence.byteSize)
+    throw new StorageProviderError(
+      'Stored evidence size does not match metadata.',
+    );
   return { content, mimeType: evidence.mimeType };
 }
 export async function technicianAction(

@@ -15,7 +15,7 @@ import {
 import { hash } from 'bcryptjs';
 
 import { type IdentityActor } from '@/modules/identity';
-import { removeLocalEvidence } from '@/modules/operations/infrastructure/local-evidence-storage';
+import { getEvidenceStorage } from '@/modules/storage';
 import { prisma as sharedPrisma } from '@/shared/db/client';
 
 export const operationsFixturePassword = 'OperationsTestOnly-247Home';
@@ -241,7 +241,9 @@ export async function cleanupOperationsFixtureNamespace(
       name: 'remove fixture evidence files',
       run: () =>
         Promise.all(
-          evidence.map(({ storageKey }) => removeLocalEvidence(storageKey)),
+          evidence.map(({ storageKey }) =>
+            getEvidenceStorage().delete(storageKey),
+          ),
         ).then(() => undefined),
     },
     {

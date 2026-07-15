@@ -19,6 +19,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:migration": "tsx scripts/test-operations-migration-upgrade.ts",
     "test:e2e": "playwright test",
+    "test:e2e:staging": "playwright test --config=playwright.staging.config.ts",
+    "test:storage-server": "tsx tests/support/s3-compatible-test-server.ts",
     "audit:prod": "tsx scripts/audit-production-dependencies.ts",
     "cleanup:operations-fixtures": "tsx scripts/cleanup-operations-fixtures.ts",
     "db:up": "docker compose up -d db",
@@ -45,6 +47,8 @@
     ]
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1087.0",
+    "@aws-sdk/s3-request-presigner": "3.1087.0",
     "@hookform/resolvers": "5.4.0",
     "@prisma/client": "6.19.3",
     "bcryptjs": "3.0.3",

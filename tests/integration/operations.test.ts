@@ -23,10 +23,11 @@ import {
   technicianAction,
 } from '@/modules/operations';
 import {
-  discardLocalEvidence,
-  readLocalEvidence,
-  storeLocalEvidence,
-} from '@/modules/operations/infrastructure/local-evidence-storage';
+  getEvidenceStorage,
+  LocalStorageAdapter,
+  maximumEvidenceBytes,
+  uploadAndPersist,
+} from '@/modules/storage';
 import {
   createOperationsFixture,
   runFailureSafeCleanup,
@@ -779,16 +780,72 @@ describe.sequential('Operations integration fixtures and invariants', () => {
         getEvidencePreview(fixture.users.customerB.actor, evidence.id),
       ).rejects.toMatchObject({ code: 'NOT_FOUND' });
       await expect(
+        getEvidencePreview(fixture.users.technicianB.actor, evidence.id),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(
         getEvidencePreview(fixture.users.manager.actor, evidence.id),
       ).resolves.toMatchObject({ mimeType: 'image/png' });
     });
   });
 
-  it('cleans staged evidence for database and filesystem failures', async () => {
+  it('rejects invalid evidence before persistence', async () => {
     await withFixture(async (fixture) => {
+      const beforeRows = await prisma.installationEvidence.count();
+      await expect(
+        addEvidence(
+          fixture.users.technicianA.actor,
+          fixture.appointments.assigned.assignmentId,
+          {
+            filename: 'mismatch.jpg',
+            contentType: 'image/png',
+            contentBase64: validPng,
+          },
+          `${fixture.namespace}-invalid-extension`,
+        ),
+      ).rejects.toThrow('extension');
+
+      await expect(
+        addEvidence(
+          fixture.users.technicianA.actor,
+          fixture.appointments.assigned.assignmentId,
+          {
+            filename: 'unsupported.gif',
+            contentType: 'image/gif' as 'image/png',
+            contentBase64: 'R0lGODlh',
+          },
+          `${fixture.namespace}-invalid-mime`,
+        ),
+      ).rejects.toThrow('MIME type');
+
+      const oversized = Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        Buffer.alloc(maximumEvidenceBytes),
+      ]).toString('base64');
+      await expect(
+        addEvidence(
+          fixture.users.technicianA.actor,
+          fixture.appointments.assigned.assignmentId,
+          {
+            filename: 'oversized.png',
+            contentType: 'image/png',
+            contentBase64: oversized,
+          },
+          `${fixture.namespace}-oversized`,
+        ),
+      ).rejects.toThrow('size');
+      await expect(prisma.installationEvidence.count()).resolves.toBe(
+        beforeRows,
+      );
+    });
+  });
+
+  it('deletes an uploaded object when its database transaction rolls back', async () => {
+    await withFixture(async (fixture) => {
+      const storage = new LocalStorageAdapter();
       const before = await evidenceFiles();
       await expect(
-        storeLocalEvidence(
+        uploadAndPersist(
+          storage,
           {
             filename: 'database-failure.png',
             contentType: 'image/png',
@@ -809,44 +866,14 @@ describe.sequential('Operations integration fixtures and invariants', () => {
               });
               throw new Error('fixture database failure');
             }),
-          async () => undefined,
         ),
       ).rejects.toThrow('fixture database failure');
-
-      let compensatedAuditId: string | undefined;
-      await expect(
-        storeLocalEvidence(
-          {
-            filename: 'filesystem-failure.png',
-            contentType: 'image/png',
-            contentBase64: validPng,
-          },
-          async (staged) => {
-            await discardLocalEvidence(staged);
-            const audit = await prisma.auditLog.create({
-              data: {
-                actorUserId: fixture.users.manager.id,
-                action: 'operations.fixture-evidence-filesystem-failure',
-                targetType: 'fixture',
-                targetId: fixture.namespace,
-                before: {},
-                after: {},
-                requestId: `${fixture.namespace}-filesystem-failure`,
-              },
-            });
-            return audit;
-          },
-          async (audit) => {
-            compensatedAuditId = audit.id;
-            await prisma.auditLog.delete({ where: { id: audit.id } });
-          },
-        ),
-      ).rejects.toThrow();
-      expect(compensatedAuditId).toBeTruthy();
-      await expect(
-        prisma.auditLog.findUnique({ where: { id: compensatedAuditId } }),
-      ).resolves.toBeNull();
       await expect(evidenceFiles()).resolves.toEqual(before);
+      await expect(
+        prisma.auditLog.count({
+          where: { action: 'operations.fixture-evidence-db-failure' },
+        }),
+      ).resolves.toBe(0);
     });
   });
 
@@ -868,7 +895,9 @@ describe.sequential('Operations integration fixtures and invariants', () => {
         where: { id: evidence.id },
         select: { storageKey: true },
       });
-      await expect(readLocalEvidence(stored.storageKey)).resolves.toBeTruthy();
+      await expect(
+        getEvidenceStorage().download(stored.storageKey),
+      ).resolves.toBeTruthy();
 
       const cleanupError = await runFailureSafeCleanup([
         {
@@ -901,7 +930,9 @@ describe.sequential('Operations integration fixtures and invariants', () => {
           },
         }),
       ).resolves.toBe(0);
-      await expect(readLocalEvidence(stored.storageKey)).resolves.toBeNull();
+      await expect(
+        getEvidenceStorage().download(stored.storageKey),
+      ).resolves.toBeNull();
     } finally {
       if (!cleanupCompleted) await fixture.cleanup();
     }

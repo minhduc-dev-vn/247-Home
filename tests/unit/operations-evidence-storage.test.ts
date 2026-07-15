@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { storeLocalEvidence } from '@/modules/operations/infrastructure/local-evidence-storage';
+import { LocalStorageAdapter } from '@/modules/storage';
 
 const evidenceRoot = path.join(
   process.cwd(),
@@ -52,5 +53,16 @@ describe('local installation evidence storage', () => {
         async () => undefined,
       ),
     ).rejects.toThrow('Invalid filename');
+  });
+
+  it('keeps local storage disabled in production', async () => {
+    const storage = new LocalStorageAdapter(undefined, 'production');
+    await expect(
+      storage.upload({
+        filename: 'evidence.png',
+        contentType: 'image/png',
+        contentBase64: 'iVBORw0KGgo=',
+      }),
+    ).rejects.toThrow('disabled in production');
   });
 });

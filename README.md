@@ -379,7 +379,9 @@ The migration is additive and does not alter Identity tables. Do not delete cata
 
 - Payment is manual COD/bank-transfer reconciliation only; there is no payment
   gateway, card storage, or refund action.
-- Local mock image/evidence storage is development/test-only.
+- Local mock image/evidence storage is development/test-only. Staging evidence
+  uses the private S3-compatible adapter and runtime contract in
+  [`docs/STAGING_SECRET_MANAGEMENT.md`](docs/STAGING_SECRET_MANAGEMENT.md).
 - The local/test rate limiter is in-memory. Production must inject a shared
   `RateLimiter` adapter before horizontal scaling.
 - Customer warranty create/list/detail, warranty state mutations, customer

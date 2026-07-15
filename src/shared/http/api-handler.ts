@@ -3,8 +3,12 @@ import { z } from 'zod';
 
 import { CatalogError } from '@/modules/catalog';
 import { LocalImageStorageError } from '@/modules/catalog/infrastructure/local-image-storage';
-import { LocalEvidenceStorageError } from '@/modules/operations/infrastructure/local-evidence-storage';
 import { OperationsPolicyError } from '@/modules/operations/domain/installation-transition';
+import {
+  StorageConfigurationError,
+  StorageProviderError,
+  StorageValidationError,
+} from '@/modules/storage';
 import {
   consumeRateLimit,
   type RateLimitAction,
@@ -245,7 +249,7 @@ export async function withApiHandler(
     }
     if (
       error instanceof LocalImageStorageError ||
-      error instanceof LocalEvidenceStorageError
+      error instanceof StorageValidationError
     ) {
       return complete(
         createErrorResponse(
@@ -253,6 +257,19 @@ export async function withApiHandler(
           'Tệp ảnh không hợp lệ.',
           requestId,
           400,
+        ),
+      );
+    }
+    if (
+      error instanceof StorageConfigurationError ||
+      error instanceof StorageProviderError
+    ) {
+      return complete(
+        createErrorResponse(
+          'STORAGE_UNAVAILABLE',
+          'KhÃ´ng thá»ƒ xá»­ lÃ½ tá»‡p lÃºc nÃ y.',
+          requestId,
+          503,
         ),
       );
     }

@@ -1,69 +1,61 @@
 # 247 Home Staging Deployment Record
 
-Deployment date: 2026-07-15, Asia/Bangkok
+Validation attempt: `2026-07-15T09:02:22Z`
 
-Operator: Codex automated release-validation operator
+Operator: `ducvu` with Codex release-validation assistance
 
-Environment: isolated local staging rehearsal on Windows; not production
+Environment: real staging requested; no staging platform binding available
 
 ## Release identity
 
-| Field | Value |
+| Field | Result |
 |---|---|
-| Deployed commit | `3fb998f6d437b6c71d430a53c5f1667ea8e7a0ec` |
-| Reviewed code commit | `3d2ab354bd81b8e534342787a0bc4b77c681ce8e` |
-| Branch | `main` |
-| Tag | None |
-| Remote | None configured |
-| Source delta from reviewed code | Documentation-only staging-readiness attestation |
+| Git branch | `main` |
+| Current HEAD | `904655f11e4511cfdc1666f8d6f6e6375cc9e8b6` |
+| Package version | `0.1.0` |
+| Release commit | **NOT DETERMINED**; remediation is uncommitted |
+| Release version | **NOT ASSIGNED** |
+| Artifact version | **NOT AVAILABLE** |
+| Image digest | **NOT AVAILABLE** |
+| Registry location | **NOT AVAILABLE** |
+| Git tag | None |
+| Git remote | None configured |
 
-The tree was clean before deployment. All 11 migration checksums matched the
-reviewed release and no unreviewed migration was present. This validation adds
-only staging evidence documents and an external-server Playwright config.
+The current HEAD predates the storage remediation. The working tree contains
+modified and untracked runtime, dependency, test and documentation files. It is
+therefore not an immutable release candidate and cannot be deployed as the
+requested staging artifact.
 
-## Environment
+## Source checksums
 
-| Component | Verified value |
+| Input | SHA-256 |
 |---|---|
-| Node.js | `24.14.0` |
-| pnpm | `10.32.1` |
-| PostgreSQL | `16.14` |
-| Application mode | Next.js production mode, one process |
-| Application endpoint | Loopback HTTP on `127.0.0.1:3100` |
-| Validation database | `home247_staging_deployment_20260715_rc1` |
-| Migration role | Dedicated non-superuser, no `CREATEDB` |
-| Runtime role | Dedicated non-superuser, no `CREATEDB` |
-| Timezone | Node and PostgreSQL verified as UTC |
+| `pnpm-lock.yaml` | `7bd48b0e6a905ad076e5dac40ddb43278b74271c43d84e0e0158913e2e83a3c1` |
+| Ordered 11-file migration manifest | `ac43ae08e369603b3e20600fecd25e523af4491074f861749a664e9c1ce689d5` |
 
-The database was newly created for this rehearsal and was not the local
-development or production database. Credentials and the generated Auth secret
-were held in process environment only and are not recorded here.
+No Prisma schema or migration file differs from HEAD. These source checksums do
+not substitute for an image digest or signed artifact provenance.
 
 ## Deployment execution
 
-1. `pnpm install --frozen-lockfile` completed successfully.
-2. A custom-format pre-migration backup was created and its manifest read
-   successfully.
-3. `pnpm db:migrate` applied 11 migrations with none pending.
-4. `pnpm db:seed` ran twice with stable counts and invariants.
-5. `pnpm build` produced a production build.
-6. One `next start` process reached ready state in 250 ms.
-7. `/api/health` and `/api/ready` returned HTTP 200.
-8. Auth registration/login, secure cookie attributes and structured request
-   logging were checked against the running production-mode process.
-9. Staging E2E ran against that external process: 13 passed and 1 failed.
-10. The process was stopped at `2026-07-15T08:19:36Z`; port 3100 then had zero
-    listeners because the deployment is blocked for traffic.
+**NOT STARTED.** No real staging deployment was attempted because all mandatory
+preconditions were absent:
+
+- clean approved release commit;
+- immutable application artifact pinned by digest;
+- registry location and previous rollback artifact;
+- real HTTPS staging URL;
+- secret-manager bindings;
+- PostgreSQL staging database binding;
+- approved private S3-compatible storage binding.
+
+No localhost process, HTTP loopback deployment, mock object store, production
+deployment or database migration was used as a substitute.
 
 ## Result
 
 **STAGING BLOCKED**
 
-Application boot, database connectivity, migration, seed, auth, health and
-most business/security checks passed. The required Technician evidence upload
-failed because local evidence storage is deliberately disabled in production
-mode and no approved staging storage provider is configured. The endpoint also
-lacked HTTPS ingress and an approved secret manager, so it was never eligible
-for public staging traffic.
-
-Detailed evidence and remediation are in `STAGING_VALIDATION_REPORT.md`.
+Required action: review and commit the remediation, publish a signed immutable
+artifact, provision the approved staging platform controls, then create a new
+deployment record for the deployed digest.

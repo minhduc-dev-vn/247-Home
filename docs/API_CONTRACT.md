@@ -529,7 +529,12 @@ Body:
 ```
 
 DTO chỉ chứa địa chỉ/contact tối thiểu cần thi công, không chứa payment/internal admin data. Assignment người khác trả `404`.
-Evidence local chỉ hoạt động ở development/test, kiểm MIME/extension/signature/kích thước, dùng tên server-side và preview không lộ filesystem path.
+Evidence dùng storage port chung. Local adapter chỉ hoạt động ở
+development/test và vẫn bị chặn trong production. Staging dùng private
+S3-compatible adapter. Upload kiểm MIME, extension, file signature và giới hạn
+5 MiB, sinh object key server-side, ghi evidence + audit trong transaction và
+xóa object nếu transaction thất bại. Preview luôn authorization trước khi
+server trả bytes; response không lộ filesystem path, credential hay object URL.
 
 ## 14. Admin warranty và audit
 
@@ -627,7 +632,10 @@ Không dùng message để client quyết định logic; dùng `code`.
 - Response auth-sensitive: `Cache-Control: private, no-store`.
 - Catalog public có thể cache server-side; không cache availability làm cam kết.
 - Operations mutation kiểm `Origin` theo `NEXTAUTH_URL`/`APP_ORIGIN`; development/test chỉ allow `http://localhost:3000` và `http://127.0.0.1:3000`.
-- Operations mutation chỉ nhận `application/json`. Body JSON action mặc định tối đa 64 KiB; endpoint evidence local dùng JSON base64 tối đa 8 MiB theo schema upload hiện tại.
+- Operations mutation chỉ nhận `application/json`. Body JSON action mặc định tối đa 64 KiB; endpoint evidence dùng JSON base64 tối đa 8 MiB, trong đó decoded image tối đa 5 MiB.
+- Storage validation failure trả `400 VALIDATION_ERROR`; provider/config outage
+  trả `503 STORAGE_UNAVAILABLE` với message generic, không lộ endpoint hay
+  credential.
 - Operations mutation rate-limit 30 request/phút theo client và action scope. Chỉ đọc `X-Forwarded-For`/`X-Real-IP` khi `TRUST_PROXY_HEADERS=true` và ingress đã được cấu hình xóa header do client tự gửi; mặc định fail-closed dùng một bucket không tin cậy. Lỗi trả envelope chuẩn: `403 FORBIDDEN`, `413 PAYLOAD_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`, `429 RATE_LIMITED` kèm `Retry-After`.
 - Rate limit auth, service check, checkout, warranty và action admin nhạy cảm.
 - `requestId` nhận từ proxy chỉ khi trusted; nếu không server sinh mới.

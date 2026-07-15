@@ -1,46 +1,33 @@
 # 247 Home Staging Performance Baseline
 
-Measured: 2026-07-15
+Validation attempt: `2026-07-15T09:02:22Z`
 
-Environment: one Next.js production process and PostgreSQL 16 on the same local
-Windows/Docker host
+## Result
 
-These measurements are a release smoke baseline, not a load test, capacity
-claim or production service-level objective.
+**NOT COLLECTED: real staging environment is unavailable.**
 
-## Metrics
+No HTTPS staging URL or deployed immutable artifact exists, so collecting local
+latency would violate the requirement not to treat localhost as staging.
 
-| Operation | Samples | Result |
-|---|---:|---|
-| Application startup | 1 | 250 ms to Next.js ready |
-| `/api/health` | 20 | min 9.56 ms; median 11.98 ms; p95 16.89 ms; max 19.15 ms |
-| Product list | 20 | min 15.07 ms; median 16.02 ms; p95 17.59 ms; max 29.87 ms |
-| Login | 3 traced requests | 70.80 ms, 256.64 ms, 278.67 ms |
-| Fresh-user login smoke | 1 | 408 ms end-to-end |
-| Seed-customer login smoke | 1 | 623 ms end-to-end |
-| Successful checkout API | 1 | 51.72 ms, HTTP 201 |
-| Out-of-stock checkout API | 1 | 18.19 ms, HTTP 409 |
-| Manager assignment API | 1 | 30.97 ms, HTTP 200 |
-| Checkout happy-path E2E | 1 | 1.6 s |
-| Checkout out-of-stock E2E | 1 | 1.3 s |
-| Manager assignment E2E | 1 | 1.5 s |
-| Full external-server E2E | 14 cases | 22.5 s; 13 pass, 1 functional failure |
+| Metric | Real staging result |
+|---|---|
+| Application startup | NOT RUN |
+| Health latency | NOT RUN |
+| Login latency | NOT RUN |
+| Product-list latency | NOT RUN |
+| Checkout latency | NOT RUN |
+| Operations action latency | NOT RUN |
+| Runtime database connectivity | NOT RUN |
+| PostgreSQL slow-query visibility | NOT VERIFIED |
+| Application resource metrics | NOT VERIFIED |
 
-## Database and observability
+Earlier loopback rehearsal measurements are intentionally not promoted into
+this baseline. They remain historical local evidence only.
 
-- Application readiness proved a bounded runtime-role database query.
-- Four runtime database connections were observed during the rehearsal.
-- PostgreSQL `log_min_duration_statement` was `-1`; slow-query logging was not
-  configured.
-- Application request logs were structured JSON with request ID, method,
-  route, status, duration and UTC timestamp only.
-- No managed metrics backend, alert sink or distributed trace collector was
-  available in this local rehearsal.
+## Required action
 
-## Interpretation
-
-The measured endpoints were responsive under sequential smoke traffic. The
-sample count and same-host topology are too small to establish throughput,
-tail-latency or saturation behavior. A real staging platform should repeat the
-same probes, enable slow-query visibility, and record CPU, memory, connection
-pool and database wait metrics before production promotion.
+After digest deployment and HTTPS/storage/database readiness, record sample
+count, min/median/p95/max, timestamp, artifact digest and environment topology
+for each metric. Also verify database connection-pool health, slow-query logging,
+CPU/memory saturation indicators and alert delivery. This is a smoke baseline,
+not a production load test or service-level objective.
