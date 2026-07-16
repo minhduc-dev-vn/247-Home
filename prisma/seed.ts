@@ -175,9 +175,9 @@ async function main() {
     ]);
 
   const admin = await prisma.user.upsert({
-    where: { email: 'admin.demo@local.247home.test' },
+    where: { email: 'admin@example.com' },
     create: {
-      email: 'admin.demo@local.247home.test',
+      email: 'admin@example.com',
       name: 'Local Demo Admin',
       passwordHash,
       roles: { create: { roleId: adminRole.id } },
@@ -186,9 +186,9 @@ async function main() {
   });
 
   const customer = await prisma.user.upsert({
-    where: { email: 'customer.demo@local.247home.test' },
+    where: { email: 'customer@example.com' },
     create: {
-      email: 'customer.demo@local.247home.test',
+      email: 'customer@example.com',
       name: 'Local Demo Customer',
       passwordHash,
       roles: { create: { roleId: customerRole.id } },
@@ -196,9 +196,9 @@ async function main() {
     update: { name: 'Local Demo Customer', passwordHash, isActive: true },
   });
   const manager = await prisma.user.upsert({
-    where: { email: 'manager.demo@local.247home.test' },
+    where: { email: 'manager@example.com' },
     create: {
-      email: 'manager.demo@local.247home.test',
+      email: 'manager@example.com',
       name: 'Local Demo Manager',
       passwordHash,
       roles: { create: { roleId: managerRole.id } },
@@ -206,9 +206,9 @@ async function main() {
     update: { name: 'Local Demo Manager', passwordHash, isActive: true },
   });
   const staff = await prisma.user.upsert({
-    where: { email: 'staff.demo@local.247home.test' },
+    where: { email: 'staff@example.com' },
     create: {
-      email: 'staff.demo@local.247home.test',
+      email: 'staff@example.com',
       name: 'Local Demo Staff',
       passwordHash,
       roles: { create: { roleId: staffRole.id } },
@@ -216,19 +216,23 @@ async function main() {
     update: { name: 'Local Demo Staff', passwordHash, isActive: true },
   });
   const technician = await prisma.user.upsert({
-    where: { email: 'technician.demo@local.247home.test' },
+    where: { email: 'technician1@example.com' },
     create: {
-      email: 'technician.demo@local.247home.test',
-      name: 'Local Demo Technician',
+      email: 'technician1@example.com',
+      name: 'Local Demo Technician One',
       passwordHash,
       roles: { create: { roleId: technicianRole.id } },
     },
-    update: { name: 'Local Demo Technician', passwordHash, isActive: true },
+    update: {
+      name: 'Local Demo Technician One',
+      passwordHash,
+      isActive: true,
+    },
   });
   const technicianTwo = await prisma.user.upsert({
-    where: { email: 'technician.two@local.247home.test' },
+    where: { email: 'technician2@example.com' },
     create: {
-      email: 'technician.two@local.247home.test',
+      email: 'technician2@example.com',
       name: 'Local Demo Technician Two',
       passwordHash,
       roles: { create: { roleId: technicianRole.id } },
@@ -761,33 +765,31 @@ async function main() {
       },
       select: { id: true },
     });
-  if (activeTechnicianDemoAssignment) {
-    await prisma.technicianAssignment.update({
-      where: { id: activeTechnicianDemoAssignment.id },
-      data: {
-        technicianId: technicianProfile.id,
-        status: 'ACTIVE',
-        completionNote: null,
-        assignedAt: new Date(),
-        acceptedAt: null,
-        enRouteAt: null,
-        arrivedAt: null,
-        startedAt: null,
-        completedAt: null,
-        scheduledStartAt: operationsSlots[1].startsAt,
-        scheduledEndAt: operationsSlots[1].endsAt,
-      },
-    });
-  } else {
-    await prisma.technicianAssignment.create({
-      data: {
-        appointmentId: technicianDemoAppointment.id,
-        technicianId: technicianProfile.id,
-        scheduledStartAt: operationsSlots[1].startsAt,
-        scheduledEndAt: operationsSlots[1].endsAt,
-      },
-    });
-  }
+  const technicianDemoAssignment = activeTechnicianDemoAssignment
+    ? await prisma.technicianAssignment.update({
+        where: { id: activeTechnicianDemoAssignment.id },
+        data: {
+          technicianId: technicianProfile.id,
+          status: 'ACTIVE',
+          completionNote: null,
+          assignedAt: new Date(),
+          acceptedAt: null,
+          enRouteAt: null,
+          arrivedAt: null,
+          startedAt: null,
+          completedAt: null,
+          scheduledStartAt: operationsSlots[1].startsAt,
+          scheduledEndAt: operationsSlots[1].endsAt,
+        },
+      })
+    : await prisma.technicianAssignment.create({
+        data: {
+          appointmentId: technicianDemoAppointment.id,
+          technicianId: technicianProfile.id,
+          scheduledStartAt: operationsSlots[1].startsAt,
+          scheduledEndAt: operationsSlots[1].endsAt,
+        },
+      });
   await prisma.payment.upsert({
     where: { orderId: technicianDemoOrder.id },
     create: {
@@ -798,6 +800,152 @@ async function main() {
       referenceCode: 'PAY-OPS-TECH-DEMO',
     },
     update: { status: 'PAID', amount: demoGrandTotal, currency: 'VND' },
+  });
+
+  await prisma.auditLog.upsert({
+    where: { id: deterministicSeedCuid('audit', 'operations-assignment') },
+    create: {
+      id: deterministicSeedCuid('audit', 'operations-assignment'),
+      actorUserId: manager.id,
+      action: 'operations.appointment-assigned',
+      targetType: 'technician_assignment',
+      targetId: technicianDemoAssignment.id,
+      before: { appointmentStatus: 'ASSIGNMENT_PENDING' },
+      after: {
+        appointmentStatus: 'ASSIGNED',
+        technicianId: technicianProfile.id,
+      },
+      reason: 'Synthetic local demo assignment',
+      requestId: 'local-demo-assignment-seed',
+    },
+    update: {
+      actorUserId: manager.id,
+      targetId: technicianDemoAssignment.id,
+      after: {
+        appointmentStatus: 'ASSIGNED',
+        technicianId: technicianProfile.id,
+      },
+    },
+  });
+
+  const cancelledAt = new Date('2025-01-02T00:00:00.000Z');
+  const cancelledOrder = await prisma.order.upsert({
+    where: { orderNumber: '247H-OPS-CANCELLED-DEMO' },
+    create: {
+      orderNumber: '247H-OPS-CANCELLED-DEMO',
+      userId: customer.id,
+      status: 'CANCELLED',
+      inventoryStatus: 'RELEASED',
+      subtotal: demoLineTotal,
+      installationFee: demoInstallationFee,
+      shippingFee: demoShippingFee,
+      grandTotal: demoGrandTotal,
+      recipientName: 'Cancelled Demo',
+      recipientPhone: '0900000000',
+      addressLine1: '3 Test Street',
+      wardName: 'Ben Nghe',
+      districtCode: 'OPS-DEMO',
+      districtName: 'Operations Demo',
+      provinceCode: 'HCM',
+      provinceName: 'Ho Chi Minh',
+      countryCode: 'VN',
+      serviceAreaId: operationsArea.id,
+      idempotencyHash: 'operations-cancelled-demo-seed',
+      requestFingerprint: 'operations-cancelled-demo-seed',
+      cancellationReason: 'Synthetic local demo cancellation',
+      cancelledAt,
+    },
+    update: {
+      status: 'CANCELLED',
+      inventoryStatus: 'RELEASED',
+      cancellationReason: 'Synthetic local demo cancellation',
+      cancelledAt,
+      version: 1,
+    },
+  });
+  const cancelledOrderItem = await prisma.orderItem.upsert({
+    where: { id: 'seed-ops-cancelled-demo-item' },
+    create: {
+      id: 'seed-ops-cancelled-demo-item',
+      orderId: cancelledOrder.id,
+      productVariantId: demoVariant.id,
+      servicePackageId: demoPackage.id,
+      productName: demoProducts[0][1],
+      variantName: demoVariant.name,
+      sku: demoVariant.sku,
+      servicePackageName: demoPackage.name,
+      quantity: 1,
+      deviceUnitPrice: demoDevicePrice,
+      serviceUnitPrice: demoServicePrice,
+      unitPrice: demoLineTotal,
+      lineTotal: demoLineTotal,
+    },
+    update: {
+      orderId: cancelledOrder.id,
+      productVariantId: demoVariant.id,
+      servicePackageId: demoPackage.id,
+      productName: demoProducts[0][1],
+      variantName: demoVariant.name,
+      sku: demoVariant.sku,
+      servicePackageName: demoPackage.name,
+      quantity: 1,
+      deviceUnitPrice: demoDevicePrice,
+      serviceUnitPrice: demoServicePrice,
+      unitPrice: demoLineTotal,
+      lineTotal: demoLineTotal,
+    },
+  });
+  await prisma.inventoryAllocation.upsert({
+    where: { orderItemId: cancelledOrderItem.id },
+    create: {
+      id: 'seed-ops-cancelled-demo-allocation',
+      orderItemId: cancelledOrderItem.id,
+      productVariantId: demoVariant.id,
+      quantity: 1,
+      status: 'RELEASED',
+      reservedAt: demoConsumedAt,
+      releasedAt: cancelledAt,
+    },
+    update: {
+      productVariantId: demoVariant.id,
+      quantity: 1,
+      status: 'RELEASED',
+      consumedAt: null,
+      releasedAt: cancelledAt,
+    },
+  });
+  await prisma.payment.upsert({
+    where: { orderId: cancelledOrder.id },
+    create: {
+      orderId: cancelledOrder.id,
+      method: 'COD',
+      status: 'CANCELLED',
+      amount: demoGrandTotal,
+      referenceCode: 'PAY-OPS-CANCELLED-DEMO',
+    },
+    update: {
+      status: 'CANCELLED',
+      amount: demoGrandTotal,
+      currency: 'VND',
+    },
+  });
+  await prisma.auditLog.upsert({
+    where: { id: deterministicSeedCuid('audit', 'cancelled-order') },
+    create: {
+      id: deterministicSeedCuid('audit', 'cancelled-order'),
+      actorUserId: manager.id,
+      action: 'order.cancelled',
+      targetType: 'order',
+      targetId: cancelledOrder.id,
+      before: { status: 'PENDING_CONFIRMATION' },
+      after: { status: 'CANCELLED', inventoryStatus: 'RELEASED' },
+      reason: 'Synthetic local demo cancellation',
+      requestId: 'local-demo-cancelled-order-seed',
+    },
+    update: {
+      actorUserId: manager.id,
+      targetId: cancelledOrder.id,
+    },
   });
 
   const slotsToReconcile = await prisma.installationSlot.findMany({

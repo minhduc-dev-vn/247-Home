@@ -1,6 +1,19 @@
+x-demo-environment: &demo-environment
+  NODE_ENV: development
+  LOCAL_DEMO: 'true'
+  DEMO_RESET_ALLOWED: 'true'
+  DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-home247}?schema=public
+  EVIDENCE_STORAGE_PROVIDER: s3
+  STORAGE_BUCKET: ${STORAGE_BUCKET:-247-home-demo}
+  STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+  STORAGE_ENDPOINT: http://storage:9000
+  STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-local-demo-minio-password}
+  STORAGE_FORCE_PATH_STYLE: 'true'
+
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
     container_name: 247-home-db
     restart: unless-stopped
     environment:
@@ -8,7 +21,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-home247}
     ports:
-      - '5433:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -18,5 +31,110 @@ services:
       retries: 10
       start_period: 5s
 
+  storage:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1@sha256:13582eff79c6605a2d315bdd0e70164142ea7e98fc8411e9e10d089502a6d883
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-local-demo-minio-password}
+    ports:
+      - '127.0.0.1:${MINIO_API_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+
+  storage-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1@sha256:95b5f3f7969a5c5a9f3a700ba72d5c84172819e13385aaf916e237cf111ab868
+    depends_on:
+      storage:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-local-demo-minio-password}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-247-home-demo}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - >-
+        mc alias set local http://storage:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}" &&
+        mc mb --ignore-existing "local/$${STORAGE_BUCKET}" &&
+        mc anonymous set none "local/$${STORAGE_BUCKET}"
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+
+  demo-bootstrap:
+    build:
+      context: .
+      target: demo-tools
+    environment: *demo-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
+    restart: 'no'
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: .
+      target: runtime
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0-local-demo}
+        BUILD_TIMESTAMP: ${BUILD_TIMESTAMP:-local}
+        GIT_SHA: ${GIT_SHA:-local}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-home247}?schema=public
+      NEXTAUTH_SECRET: ${AUTH_SECRET:-local-demo-only-auth-secret-change-before-sharing-247-home}
+      NEXTAUTH_URL: ${AUTH_URL:-http://127.0.0.1:3000}
+      APP_ORIGIN: ${APP_ORIGIN:-http://127.0.0.1:3000}
+      LOCAL_DEMO: 'true'
+      AUTH_SECURE_COOKIES: 'false'
+      TRUST_PROXY_HEADERS: 'false'
+      EVIDENCE_STORAGE_PROVIDER: s3
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-247-home-demo}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ENDPOINT: http://storage:9000
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-local-demo-minio-password}
+      STORAGE_FORCE_PATH_STYLE: 'true'
+    depends_on:
+      demo-bootstrap:
+        condition: service_completed_successfully
+    ports:
+      - '127.0.0.1:${APP_PORT:-3000}:3000'
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
 volumes:
   postgres-data:
+  minio-data:

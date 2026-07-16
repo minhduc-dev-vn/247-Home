@@ -39,4 +39,37 @@ describe('evidence storage factory', () => {
       }),
     ).toBeInstanceOf(S3ObjectStorageAdapter);
   });
+
+  it('uses the AWS SDK credential provider chain when static keys are absent', () => {
+    expect(
+      createEvidenceStorage({
+        NODE_ENV: 'production',
+        EVIDENCE_STORAGE_PROVIDER: 's3',
+        STORAGE_BUCKET: 'private-evidence',
+        STORAGE_REGION: 'ap-southeast-1',
+      }),
+    ).toBeInstanceOf(S3ObjectStorageAdapter);
+  });
+
+  it('rejects partial credentials and unsigned custom endpoints', () => {
+    expect(() =>
+      createEvidenceStorage({
+        NODE_ENV: 'production',
+        EVIDENCE_STORAGE_PROVIDER: 's3',
+        STORAGE_BUCKET: 'private-evidence',
+        STORAGE_REGION: 'ap-southeast-1',
+        STORAGE_ACCESS_KEY: 'access-key-only',
+      }),
+    ).toThrow('STORAGE_ACCESS_KEY');
+
+    expect(() =>
+      createEvidenceStorage({
+        NODE_ENV: 'production',
+        EVIDENCE_STORAGE_PROVIDER: 's3',
+        STORAGE_BUCKET: 'private-evidence',
+        STORAGE_REGION: 'ap-southeast-1',
+        STORAGE_ENDPOINT: 'https://objects.staging.example',
+      }),
+    ).toThrow('STORAGE_ENDPOINT');
+  });
 });

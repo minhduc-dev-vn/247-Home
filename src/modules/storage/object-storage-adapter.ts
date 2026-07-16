@@ -26,8 +26,10 @@ export type S3ObjectStorageConfig = {
   bucket: string;
   region: string;
   endpoint?: string;
-  accessKeyId: string;
-  secretAccessKey: string;
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
   forcePathStyle: boolean;
 };
 
@@ -57,10 +59,7 @@ export class S3ObjectStorageAdapter implements PrivateObjectStorage {
         region: config.region,
         endpoint: config.endpoint,
         forcePathStyle: config.forcePathStyle,
-        credentials: {
-          accessKeyId: config.accessKeyId,
-          secretAccessKey: config.secretAccessKey,
-        },
+        credentials: config.credentials,
       });
   }
 

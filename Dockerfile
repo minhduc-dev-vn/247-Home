@@ -2,13 +2,16 @@
 
 FROM node:24.14.0-alpine3.22@sha256:76db75ca7e7da9148ae42c92d9be12d12a8d7b03e171f18339355d8078d644a0 AS base
 
-ENV PNPM_HOME=/pnpm \
+ENV COREPACK_HOME=/corepack \
+    PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN apk upgrade --no-cache \
+    && mkdir -p "$COREPACK_HOME" \
     && corepack enable \
-    && corepack prepare pnpm@10.32.1 --activate
+    && corepack prepare pnpm@10.32.1 --activate \
+    && chmod -R a+rX "$COREPACK_HOME"
 WORKDIR /app
 
 FROM base AS dependencies
@@ -32,6 +35,16 @@ ENV APP_VERSION=$APP_VERSION \
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN pnpm db:generate && pnpm build
+
+FROM dependencies AS demo-tools
+
+ENV NODE_ENV=development
+
+COPY --chown=node:node . .
+RUN pnpm db:generate
+
+USER node
+CMD ["pnpm", "demo:bootstrap"]
 
 FROM node:24.14.0-alpine3.22@sha256:76db75ca7e7da9148ae42c92d9be12d12a8d7b03e171f18339355d8078d644a0 AS runtime
 

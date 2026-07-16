@@ -1,0 +1,18 @@
+container_image = "<AWS_ACCOUNT_ID>.dkr.ecr.ap-southeast-1.amazonaws.com/247-home-staging@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+alb_certificate_arn        = "arn:aws:acm:ap-southeast-1:<AWS_ACCOUNT_ID>:certificate/<CERTIFICATE_ID>"
+alb_origin_domain_name     = "origin-staging.REPLACE_WITH_OWNED_DOMAIN"
+cloudfront_certificate_arn = "arn:aws:acm:us-east-1:<AWS_ACCOUNT_ID>:certificate/<CERTIFICATE_ID>"
+ses_identity_arn           = "arn:aws:ses:ap-southeast-1:<AWS_ACCOUNT_ID>:identity/staging.247home.vn"
+origin_verify_header_value = "<GENERATE_AT_LEAST_32_RANDOM_CHARACTERS_OUTSIDE_GIT>"
+
+github_oidc_subjects = [
+  "repo:<OWNER>/<REPOSITORY>:environment:staging",
+]
+
+enable_ecs_service = false
+
+additional_tags = {
+  Owner      = "platform-team"
+  CostCenter = "247-home"
+}

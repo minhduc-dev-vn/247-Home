@@ -6,7 +6,6 @@ import { consumeRateLimit } from '@/modules/identity/infrastructure/rate-limiter
 import { normalizeEmail } from '@/modules/identity/presentation/schemas';
 import { getServerEnvironment } from '@/shared/validation/env';
 
-const isProduction = process.env.NODE_ENV === 'production';
 const environment = getServerEnvironment();
 
 export const authOptions: NextAuthOptions = {
@@ -17,16 +16,17 @@ export const authOptions: NextAuthOptions = {
     maxAge: 8 * 60 * 60,
     updateAge: 15 * 60,
   },
+  useSecureCookies: environment.AUTH_SECURE_COOKIES,
   cookies: {
     sessionToken: {
-      name: isProduction
+      name: environment.AUTH_SECURE_COOKIES
         ? '__Secure-next-auth.session-token'
         : 'next-auth.session-token',
       options: {
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
-        secure: isProduction,
+        secure: environment.AUTH_SECURE_COOKIES,
       },
     },
   },

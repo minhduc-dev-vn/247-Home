@@ -16,8 +16,7 @@ Presence was checked without reading or printing secret values.
 | `APP_ORIGIN` | No | No |
 | `EVIDENCE_STORAGE_PROVIDER` | No | No |
 | `STORAGE_BUCKET` | No | No |
-| `STORAGE_ACCESS_KEY` | No | No |
-| `STORAGE_SECRET_KEY` | No | No |
+| ECS storage task-role binding | No | No |
 
 The ignored local `.env` is development configuration and was not inspected for
 or treated as staging evidence. No secret value was copied to this report.
@@ -25,7 +24,7 @@ or treated as staging evidence. No secret value was copied to this report.
 ## Checks not run
 
 - runtime injection from an approved secret manager;
-- least-privilege identity verification;
+- least-privilege ECS task-role allow/deny verification;
 - image/CI artifact canary scan for injected staging secrets;
 - platform log scan;
 - secret-version replacement and application restart;
@@ -37,7 +36,8 @@ staging validation rules.
 ## Required action
 
 Provision environment-scoped secret-manager references according to
-`STAGING_SECRET_MANAGEMENT.md`, grant the staging runtime identity read access
-only, record non-secret version identifiers, and execute the rotation test on
-the deployed immutable artifact. Rotate/revoke credentials after any suspected
-exposure; never place them in Git, image layers or command arguments.
+`STAGING_SECRET_MANAGEMENT.md`, bind the least-privilege ECS task role for S3,
+record non-secret version identifiers, and execute the rotation and storage
+authorization tests on the deployed immutable artifact. Rotate/revoke secrets
+after any suspected exposure; never place them in Git, image layers or command
+arguments.

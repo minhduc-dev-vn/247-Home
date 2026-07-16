@@ -263,6 +263,23 @@ pnpm build
 
 `pnpm test:integration` cần PostgreSQL local đang chạy và migration đã áp dụng. `pnpm db:down` chỉ dừng container, không xóa Docker volume. Không chạy reset database hoặc migration production.
 
+### Local production demo bằng Docker
+
+Stack demo chạy standalone production image, PostgreSQL và private MinIO mà
+không cần AWS:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm demo:up
+```
+
+Mở `http://127.0.0.1:3000`. Migration, seed và evidence mẫu chạy trong one-shot
+`demo-tools` container trước khi app khởi động. Reset riêng database/bucket demo
+bằng `pnpm demo:reset`; lệnh có allowlist local và không xóa Docker volume.
+
+Xem tài khoản, scenario và troubleshooting tại
+[`docs/LOCAL_DEMO_RUNBOOK.md`](docs/LOCAL_DEMO_RUNBOOK.md).
+
 ## 11. Dependencies production
 
 | Dependency                                           | Mục đích, lựa chọn và rollback                                                                                                                                                                                                                                                                                                                    |
@@ -342,7 +359,8 @@ Ghi quyết định accepted trong `docs/decisions/ADR-*.md`, rồi cập nhật
 
 - Next.js App Router chạy TypeScript strict mode qua pnpm.
 - Tailwind CSS v4 và shadcn/ui baseline đã cấu hình tại `components.json`.
-- Docker Compose chỉ dành cho PostgreSQL local; volume được giữ lại khi dừng container.
+- Docker Compose có production-like app, PostgreSQL và private MinIO local; các
+  volume được giữ lại khi dừng container.
 - Prisma có technical marker; seed hiện tại bổ sung catalog, user, order và dữ
   liệu Operations chỉ cho development/test.
 - `GET /api/health` kiểm process; `GET /api/ready` kiểm PostgreSQL với timeout và không lộ cấu hình/credential.
@@ -356,7 +374,10 @@ Rollback bootstrap: dừng Compose bằng `pnpm db:down`, revert application và
 - Đăng ký, đăng nhập, đăng xuất, quên/reset password, `/account` và `/admin` đã nằm trong Slice 2.
 - Tạo `NEXTAUTH_SECRET` riêng cho local bằng lệnh ở phần chạy local; không commit giá trị đó.
 - Local reset email được ghi vào `.local-outbox/`, thư mục bị ignore và chỉ hoạt động ngoài production.
-- Seed local/test tạo `admin.demo@local.247home.test` và `customer.demo@local.247home.test` với password công khai `LocalDemoOnly-247Home`; seed từ chối chạy khi `NODE_ENV=production`.
+- Seed local/test tạo `admin@example.com`, `manager@example.com`,
+  `customer@example.com`, `technician1@example.com` và
+  `technician2@example.com` với password công khai
+  `LocalDemoOnly-247Home`; seed từ chối chạy khi `NODE_ENV=production`.
 
 ## 18. Product Catalog and Inventory
 
@@ -379,8 +400,8 @@ The migration is additive and does not alter Identity tables. Do not delete cata
 
 - Payment is manual COD/bank-transfer reconciliation only; there is no payment
   gateway, card storage, or refund action.
-- Local mock image/evidence storage is development/test-only. Staging evidence
-  uses the private S3-compatible adapter and runtime contract in
+- Docker demo evidence uses private MinIO through the same S3-compatible adapter.
+  Staging evidence uses the private object-storage runtime contract in
   [`docs/STAGING_SECRET_MANAGEMENT.md`](docs/STAGING_SECRET_MANAGEMENT.md).
 - The local/test rate limiter is in-memory. Production must inject a shared
   `RateLimiter` adapter before horizontal scaling.

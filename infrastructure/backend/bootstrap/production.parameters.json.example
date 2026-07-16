@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "production"
+  },
+  {
+    "ParameterKey": "StateBucketName",
+    "ParameterValue": "REPLACE_WITH_GLOBALLY_UNIQUE_PRODUCTION_STATE_BUCKET"
+  },
+  {
+    "ParameterKey": "AccessLogBucketName",
+    "ParameterValue": "REPLACE_WITH_GLOBALLY_UNIQUE_PRODUCTION_LOG_BUCKET"
+  },
+  {
+    "ParameterKey": "LockTableName",
+    "ParameterValue": "247-home-production-terraform-locks"
+  },
+  {
+    "ParameterKey": "TerraformPrincipalArn",
+    "ParameterValue": "arn:aws:iam::REPLACE_ACCOUNT_ID:role/REPLACE_APPROVED_ROLE"
+  }
+]

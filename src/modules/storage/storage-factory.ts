@@ -7,14 +7,31 @@ import {
   type PrivateObjectStorage,
 } from '@/modules/storage/storage-interface';
 
-const s3ConfigurationSchema = z.object({
-  STORAGE_BUCKET: z.string().trim().min(3).max(255),
-  STORAGE_REGION: z.string().trim().min(1).max(100),
-  STORAGE_ENDPOINT: z.string().url().optional(),
-  STORAGE_ACCESS_KEY: z.string().min(1),
-  STORAGE_SECRET_KEY: z.string().min(1),
-  STORAGE_FORCE_PATH_STYLE: z.enum(['true', 'false']).default('false'),
-});
+const s3ConfigurationSchema = z
+  .object({
+    STORAGE_BUCKET: z.string().trim().min(3).max(255),
+    STORAGE_REGION: z.string().trim().min(1).max(100),
+    STORAGE_ENDPOINT: z.string().url().optional(),
+    STORAGE_ACCESS_KEY: z.string().min(1).optional(),
+    STORAGE_SECRET_KEY: z.string().min(1).optional(),
+    STORAGE_FORCE_PATH_STYLE: z.enum(['true', 'false']).default('false'),
+  })
+  .superRefine((configuration, context) => {
+    const hasAccessKey = configuration.STORAGE_ACCESS_KEY !== undefined;
+    const hasSecretKey = configuration.STORAGE_SECRET_KEY !== undefined;
+    if (hasAccessKey !== hasSecretKey)
+      context.addIssue({
+        code: 'custom',
+        message: 'Static storage credentials must be provided together.',
+        path: ['STORAGE_ACCESS_KEY'],
+      });
+    if (configuration.STORAGE_ENDPOINT !== undefined && !hasAccessKey)
+      context.addIssue({
+        code: 'custom',
+        message: 'A custom S3 endpoint requires explicit credentials.',
+        path: ['STORAGE_ENDPOINT'],
+      });
+  });
 
 export function createEvidenceStorage(
   environment: Record<string, string | undefined> = process.env,
@@ -48,8 +65,13 @@ export function createEvidenceStorage(
     bucket: parsed.data.STORAGE_BUCKET,
     region: parsed.data.STORAGE_REGION,
     endpoint: parsed.data.STORAGE_ENDPOINT,
-    accessKeyId: parsed.data.STORAGE_ACCESS_KEY,
-    secretAccessKey: parsed.data.STORAGE_SECRET_KEY,
+    credentials:
+      parsed.data.STORAGE_ACCESS_KEY && parsed.data.STORAGE_SECRET_KEY
+        ? {
+            accessKeyId: parsed.data.STORAGE_ACCESS_KEY,
+            secretAccessKey: parsed.data.STORAGE_SECRET_KEY,
+          }
+        : undefined,
     forcePathStyle: parsed.data.STORAGE_FORCE_PATH_STYLE === 'true',
   });
 }

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { prisma } from '@/shared/db/client';
 
-const customerEmail = 'customer.demo@local.247home.test';
+const customerEmail = 'customer@example.com';
 const customerPassword = 'LocalDemoOnly-247Home';
 
 type CheckoutTestFixture = {

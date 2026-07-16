@@ -16,10 +16,15 @@ permit secrets in repository files, build arguments, images or logs.
 | `EVIDENCE_STORAGE_PROVIDER` | No | Deployment configuration | Provider migration; staging value is `s3` |
 | `STORAGE_BUCKET` | Sensitive config | Storage platform configuration | Bucket migration |
 | `STORAGE_REGION` | No | Storage platform configuration | Provider/region migration |
-| `STORAGE_ENDPOINT` | No | Storage platform configuration | Provider endpoint change |
-| `STORAGE_ACCESS_KEY` | Yes | Staging secret manager or workload-identity bridge | Exposure, operator/service-account change, scheduled rotation |
-| `STORAGE_SECRET_KEY` | Yes | Staging secret manager or workload-identity bridge | Exposure, operator/service-account change, scheduled rotation |
+| `STORAGE_ENDPOINT` | No | Local/test custom-provider configuration; unset for native AWS S3 | Provider endpoint change |
+| `STORAGE_ACCESS_KEY` | Conditional secret | Local/test custom endpoint only; unset on ECS | Exposure or custom-provider change |
+| `STORAGE_SECRET_KEY` | Conditional secret | Local/test custom endpoint only; unset on ECS | Exposure or custom-provider change |
 | `STORAGE_FORCE_PATH_STYLE` | No | Deployment configuration | Provider compatibility change |
+
+Native AWS S3 uses the ECS task role through the AWS SDK default credential
+provider chain. A custom endpoint requires both static credential fields; a
+partial pair or custom endpoint without credentials fails environment
+validation. Static storage credentials are prohibited for AWS staging.
 
 The application currently consumes the Auth.js `NEXTAUTH_*` names. A platform
 may expose the approved `AUTH_*` aliases only if its deployment template maps
@@ -57,7 +62,8 @@ gates.
    login, evidence upload/preview/delete and structured-log redaction.
 4. Revoke the previous credential after the overlap window.
 5. Record actor, timestamp, secret version identifiers and validation result;
-   never record values.
+   never record values. Native AWS S3 role changes are rolled out by changing
+   the task-role policy and replacing the task, not by creating access keys.
 
 Rotating `NEXTAUTH_SECRET` intentionally invalidates existing sessions and must
 be announced to staging testers. Suspected exposure requires immediate revoke,

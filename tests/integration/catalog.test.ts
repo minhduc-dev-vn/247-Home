@@ -77,7 +77,7 @@ async function createCatalogFixture() {
 describe('catalog persistence and authorization', () => {
   beforeAll(async () => {
     const user = await prisma.user.findUniqueOrThrow({
-      where: { email: 'admin.demo@local.247home.test' },
+      where: { email: 'admin@example.com' },
     });
     admin = { ...admin, userId: user.id };
   });

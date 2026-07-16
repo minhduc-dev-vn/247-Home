@@ -17,13 +17,17 @@ Required runtime bindings:
 | `EVIDENCE_STORAGE_PROVIDER` | No | Must be `s3` |
 | `STORAGE_BUCKET` | Sensitive config | Runtime |
 | `STORAGE_REGION` | No | Runtime |
-| `STORAGE_ENDPOINT` | No | Runtime when provider requires it |
-| `STORAGE_ACCESS_KEY` | Yes | Runtime, unless workload identity is used |
-| `STORAGE_SECRET_KEY` | Yes | Runtime, unless workload identity is used |
+| `STORAGE_ENDPOINT` | No | Local/test custom endpoint only; unset on ECS |
+| `STORAGE_ACCESS_KEY` | Conditional secret | Local/test custom endpoint only; unset on ECS |
+| `STORAGE_SECRET_KEY` | Conditional secret | Local/test custom endpoint only; unset on ECS |
 | `TRUST_PROXY_HEADERS` | No | Enable only after ingress validation |
 
 Migration and deploy-hook credentials are separate protected GitHub
 Environment secrets described in `STAGING_CI_CD.md`.
+
+AWS staging must use the ECS task role via the SDK default credential provider
+chain. Static storage keys are not an approved AWS binding. A custom endpoint is
+limited to local/test and must supply both key fields together.
 
 ## Controls
 
@@ -41,4 +45,3 @@ runtime injection, negative old-credential test, rotation timestamp and log/
 artifact canary scans. Never record values.
 
 No approved vault or platform secret binding is available in this checkout.
-

@@ -9,6 +9,7 @@ test-results/
 # Local environment files
 .env*
 !.env.example
+!.env.demo.example
 
 # Local tooling and database files
 *.log
@@ -17,3 +18,13 @@ test-results/
 postgres-data/
 .local-outbox/
 .local-uploads/
+
+# Terraform local state, plans, provider cache, and real environment values
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log

@@ -28,7 +28,7 @@ test('prevents a signed-in customer from accessing the admin page', async ({
   page,
 }) => {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('customer.demo@local.247home.test');
+  await page.getByLabel('Email').fill('customer@example.com');
   await page.getByLabel('Mật khẩu').fill('LocalDemoOnly-247Home');
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
 

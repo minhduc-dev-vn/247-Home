@@ -17,8 +17,10 @@ const config = {
   bucket: 'private-evidence',
   region: 'us-east-1',
   endpoint: 'https://objects.staging.example',
-  accessKeyId: 'test-access-key',
-  secretAccessKey: 'test-secret-key',
+  credentials: {
+    accessKeyId: 'test-access-key',
+    secretAccessKey: 'test-secret-key',
+  },
   forcePathStyle: true,
 };
 
@@ -60,7 +62,7 @@ describe('S3-compatible private object storage', () => {
 
     expect(url.searchParams.get('X-Amz-Expires')).toBe('90');
     expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
-    expect(privateUrl).not.toContain(config.secretAccessKey);
+    expect(privateUrl).not.toContain(config.credentials.secretAccessKey);
   });
 
   it('rejects extension mismatch and oversized content before provider I/O', async () => {

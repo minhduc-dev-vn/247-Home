@@ -17,7 +17,7 @@ test('prevents a signed-in customer from viewing the catalog administration page
   page,
 }) => {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('customer.demo@local.247home.test');
+  await page.getByLabel('Email').fill('customer@example.com');
   await page.locator('input[type="password"]').fill('LocalDemoOnly-247Home');
   await page.locator('form button[type="submit"]').click();
 
