@@ -12,7 +12,8 @@ export class CatalogError extends Error {
       | 'NOT_FOUND'
       | 'SERVICE_AREA_UNSUPPORTED'
       | 'SLOT_UNAVAILABLE'
-      | 'UNAUTHENTICATED',
+      | 'UNAUTHENTICATED'
+      | 'WARRANTY_NOT_ELIGIBLE',
     message: string = code,
   ) {
     super(message);

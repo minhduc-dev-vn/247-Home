@@ -5,7 +5,8 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: '247 Home',
-  description: 'Nền tảng thiết bị nhà thông minh và dịch vụ lắp đặt.',
+  description:
+    'Thiết bị nhà thông minh và dịch vụ lắp đặt tận nơi cho gia đình Việt.',
 };
 
 export default function RootLayout({

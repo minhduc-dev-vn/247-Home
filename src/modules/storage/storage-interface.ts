@@ -10,6 +10,7 @@ export type StorageUploadInput = {
   filename: string;
   contentType: EvidenceMimeType;
   contentBase64: string;
+  purpose?: 'installation' | 'warranty';
 };
 
 export type StoredPrivateObject = {

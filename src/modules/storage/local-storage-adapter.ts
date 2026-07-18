@@ -39,7 +39,10 @@ export class LocalStorageAdapter implements PrivateObjectStorage {
   async upload(input: StorageUploadInput): Promise<StoredPrivateObject> {
     this.assertEnabled();
     const validated = validateEvidenceUpload(input);
-    const storageKey = createEvidenceStorageKey(validated.extension);
+    const storageKey = createEvidenceStorageKey(
+      validated.extension,
+      input.purpose,
+    );
     const destination = this.resolve(storageKey);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, validated.content, { flag: 'wx' });

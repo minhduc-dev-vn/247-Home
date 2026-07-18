@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import {
   login,
@@ -20,6 +20,14 @@ type AssignmentDetail = {
   evidence: Array<{ id: string }>;
 };
 
+async function confirmAction(page: Page, actionName: string) {
+  await page.getByRole('button', { name: actionName, exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Xác nhận', exact: true })
+    .click();
+}
+
 test('assigned technician completes the installation workflow and rejects a concurrent en-route submit', async ({
   browser,
 }) => {
@@ -30,12 +38,12 @@ test('assigned technician completes the installation workflow and rejects a conc
     const actionsUrl = `${assignmentUrl}/actions`;
 
     await login(page, fixture.users.technicianA.email);
-    await page.goto('/technician');
+    await page.goto('/technician/orders');
     await page.getByLabel('Trang thai').selectOption('ASSIGNED');
 
-    const job = page.locator('tr', {
-      hasText: fixture.appointments.assigned.orderNumber,
-    });
+    const job = page
+      .getByTestId('technician-job-card')
+      .filter({ hasText: fixture.appointments.assigned.orderNumber });
     await expect(job).toContainText('ASSIGNED');
 
     const invalidStart = await requestJson<{ error: { code: string } }>(
@@ -52,15 +60,22 @@ test('assigned technician completes the installation workflow and rejects a conc
     expect(invalidStart.status).toBe(409);
     expect(invalidStart.body.error.code).toBe('INVALID_STATE_TRANSITION');
 
-    await job.getByRole('button', { name: 'Chi tiet' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Chi tiet cong viec' });
+    await job.getByRole('link', { name: 'Mở công việc' }).click();
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/technician/orders/${fixture.appointments.assigned.assignmentId}$`,
+      ),
+    );
+    const detailPage = page.locator('main');
     await expect(
-      dialog.getByText('Fixture installation product'),
+      detailPage.getByText('Fixture installation product'),
     ).toBeVisible();
-    await expect(dialog.getByText('Fixture District').first()).toBeVisible();
+    await expect(
+      detailPage.getByText('Fixture District').first(),
+    ).toBeVisible();
 
-    await dialog.getByRole('button', { name: 'Nhan viec' }).click();
-    await expect(dialog.getByText(/^Nhan viec:/)).toBeVisible();
+    await confirmAction(page, 'Nhận việc');
+    await expect(page.getByText('Nhận việc thành công.')).toBeVisible();
     const accepted = await requestJson<{ data: AssignmentDetail }>(
       page,
       assignmentUrl,
@@ -102,39 +117,24 @@ test('assigned technician completes the installation workflow and rejects a conc
     });
 
     await page.reload();
-    await page.getByLabel('Trang thai').selectOption('EN_ROUTE');
-    const enRouteJob = page.locator('tr', {
-      hasText: fixture.appointments.assigned.orderNumber,
-    });
-    await expect(enRouteJob).toContainText('EN_ROUTE');
-    await enRouteJob.getByRole('button', { name: 'Chi tiet' }).click();
-    const refreshedDialog = page.getByRole('dialog', {
-      name: 'Chi tiet cong viec',
-    });
+    await expect(page.locator('main')).toContainText('EN_ROUTE');
+
+    await confirmAction(page, 'Đã đến');
     await expect(
-      refreshedDialog.getByText('EN_ROUTE', { exact: true }),
+      page.getByRole('button', { name: 'Bắt đầu công việc' }),
+    ).toBeVisible();
+    await confirmAction(page, 'Bắt đầu công việc');
+    await expect(
+      page.getByRole('button', { name: 'Hoàn thành' }),
     ).toBeVisible();
 
-    await refreshedDialog.getByRole('button', { name: 'Da den' }).click();
-    await expect(
-      refreshedDialog.getByRole('button', { name: 'Bat dau cong viec' }),
-    ).toBeVisible();
-    await refreshedDialog
-      .getByRole('button', { name: 'Bat dau cong viec' })
-      .click();
-    await expect(
-      refreshedDialog.getByRole('button', { name: 'Hoan thanh' }),
-    ).toBeVisible();
-
-    await refreshedDialog.getByLabel('Anh nghiem thu').setInputFiles({
+    await page.getByLabel('Anh nghiem thu').setInputFiles({
       name: 'completion.png',
       mimeType: 'image/png',
       buffer: png,
     });
-    await refreshedDialog.getByRole('button', { name: 'Tai evidence' }).click();
-    await expect(
-      refreshedDialog.getByRole('img', { name: /Evidence/ }),
-    ).toBeVisible();
+    await page.getByRole('button', { name: 'Tai evidence' }).click();
+    await expect(page.getByRole('img', { name: /Evidence/ })).toBeVisible();
 
     const afterUpload = await requestJson<{ data: AssignmentDetail }>(
       page,
@@ -146,15 +146,13 @@ test('assigned technician completes the installation workflow and rejects a conc
       requestStatus(page, `/api/v1/operations/evidence/${evidenceId}`),
     ).resolves.toMatchObject({ status: 200, contentType: 'image/png' });
 
-    await refreshedDialog
+    await page
       .getByLabel('Ghi chu ket qua')
       .fill('Da lap dat va kiem tra nghiem thu.');
-    await refreshedDialog.getByRole('button', { name: 'Hoan thanh' }).click();
+    await confirmAction(page, 'Hoàn thành');
+    await expect(page.locator('main')).toContainText('COMPLETED');
     await expect(
-      refreshedDialog.getByText('COMPLETED', { exact: true }),
-    ).toBeVisible();
-    await expect(
-      refreshedDialog.getByText('Ket qua: Da lap dat va kiem tra nghiem thu.'),
+      page.getByText('Da lap dat va kiem tra nghiem thu.'),
     ).toBeVisible();
 
     const managerContext = await newContext();

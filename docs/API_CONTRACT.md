@@ -351,30 +351,86 @@ Reschedule body:
 
 Customer order DTO không trả internal note, full audit, staff-only metadata hoặc dữ liệu payment nhạy cảm. Sai owner trả `404`.
 
-## 9. Warranty customer (planned, not exposed)
+## 9. Warranty customer
 
-Các route trong mục này là target contract và chưa tồn tại trong implementation
-hiện tại. Client không được giả định chúng khả dụng cho tới khi vertical slice
-Warranty có authorization, eligibility, audit và test riêng.
+Các route customer warranty đã được triển khai dưới prefix `/api/v1/warranty`.
+Customer query theo owner tại database; resource ngoài scope trả `404`.
 
 | Method | Path | Quyền |
 |---|---|---|
-| GET | `/api/v1/warranty-requests` | CUSTOMER own |
-| POST | `/api/v1/warranty-requests` | CUSTOMER own order item |
-| GET | `/api/v1/warranty-requests/{id}` | CUSTOMER own |
+| GET | `/api/v1/warranty?status=&cursor=&limit=` | CUSTOMER own |
+| POST | `/api/v1/warranty` | CUSTOMER own order item |
+| GET | `/api/v1/warranty/{id}` | CUSTOMER own |
+| POST | `/api/v1/warranty/{id}/evidence` | CUSTOMER owner; trạng thái `SUBMITTED`/`IN_REVIEW` |
+| GET | `/api/v1/warranty/{id}/evidence/{evidenceId}` | CUSTOMER owner; STAFF/MANAGER/ADMIN read |
+| PATCH | `/api/v1/warranty/{id}/state` | CUSTOMER owner close; STAFF/MANAGER process |
+| GET | `/api/v1/warranty/{id}/audit?cursor=&limit=` | CUSTOMER owner, payload đã redact |
 
 Create body:
 
 ```json
 {
-  "orderItemId": "uuid",
+  "orderId": "uuid",
+  "productId": "uuid",
+  "coverageType": "DEVICE",
   "issueType": "DEVICE_NOT_WORKING",
   "description": "Mo ta toi da theo schema",
   "contactPhone": "0900000000"
 }
 ```
 
-Server kiểm ownership và eligibility. Response không chứa `internalNote`.
+Header bắt buộc:
+
+```http
+Idempotency-Key: customer-generated-opaque-key
+```
+
+`coverageType` mặc định `DEVICE`, `issueType` mặc định `OTHER`, `contactPhone`
+có thể bỏ qua để server dùng recipient phone snapshot của order. Contract cũ
+`orderItemId` vẫn được nhận trong giai đoạn tương thích, nhưng Customer UI mới phải
+dùng `orderId + productId`. Nếu một order có nhiều item cùng product mà coverage
+không đủ để phân giải duy nhất, server trả `409 AMBIGUOUS_ORDER_PRODUCT` thay vì tự
+chọn item tùy ý.
+
+`coverageType` là `DEVICE` hoặc `INSTALLATION`. Installation chỉ hợp lệ khi order
+item có service package snapshot. Server yêu cầu order `COMPLETED`, dùng
+`order.completed_at` và `order_items.warranty_months`; catalog hiện tại không được
+dùng để thay đổi quyền lợi của order cũ. Một `(customer, orderItem, coverageType)`
+chỉ có một request. Response customer không chứa `internalNote`.
+
+Cùng `Idempotency-Key` và cùng canonical payload trả request đã tạo với `200` và
+header `Idempotent-Replayed: true`; create lần đầu trả `201`. Cùng key nhưng payload
+khác trả `409 IDEMPOTENCY_CONFLICT`. Key khác nhưng trùng
+`(customer, orderItem, coverageType)` trả `409 DUPLICATE_WARRANTY_REQUEST`. Chỉ lần
+create đầu ghi audit.
+
+State body:
+
+```json
+{
+  "expectedVersion": 2,
+  "nextStatus": "RESOLVED",
+  "reason": "Approved replacement",
+  "publicResolution": "Replacement approved",
+  "internalNote": "staff-only optional"
+}
+```
+
+STAFF/MANAGER: `SUBMITTED -> IN_REVIEW`, rồi `IN_REVIEW -> RESOLVED|REJECTED`.
+Customer owner: `RESOLVED|REJECTED -> CLOSED`. TECHNICIAN và ADMIN không được mutation.
+`publicResolution` và `internalNote` chỉ processor được ghi. Stale
+`expectedVersion`, duplicate request hoặc concurrent evidence trả `409`.
+
+Evidence upload dùng JSON base64 với `expectedVersion`, `filename`, `contentType`
+và `contentBase64`. Chỉ JPEG/PNG/WebP tối đa 5 MiB, kiểm extension, signature và
+MIME. Object key do server sinh trong namespace `warranty-evidence`; preview trả
+bytes private/no-store, không trả storage key/path. List và audit mặc định 25,
+tối đa 100, có cursor ổn định.
+
+Create không nhận storage key hoặc evidence ID do client tự khai báo. UI tạo request
+idempotent trước, sau đó upload qua endpoint evidence; cách này tránh attach object
+của request/customer khác. Description là customer note; public resolution là note
+customer-visible của processor; internal note không nằm trong customer DTO.
 
 ## 10. Admin catalog và inventory
 
@@ -544,9 +600,11 @@ server trả bytes; response không lộ filesystem path, credential hay object 
 | GET | `/api/v1/admin/operations/warranties/{id}` | STAFF/MANAGER/ADMIN |
 | GET | `/api/v1/admin/operations/audit?action=&targetType=&targetId=&cursor=&limit=` | MANAGER/ADMIN |
 
-Warranty actions chưa được expose trong Operations UI hiện tại; giao diện chỉ hiển thị chi tiết và không hiển thị action khi server policy/endpoint chưa tồn tại.
+Warranty processor action dùng `PATCH /api/v1/warranty/{id}/state` và chỉ cho
+STAFF/MANAGER theo state machine. Operations UI có thể chưa expose action này;
+ADMIN vẫn read-only theo Customer Warranty policy.
 
-Body dự kiến cho warranty mutation tương lai:
+Body warranty processor mutation:
 
 ```json
 {

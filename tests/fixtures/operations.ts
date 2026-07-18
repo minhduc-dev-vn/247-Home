@@ -688,13 +688,20 @@ export async function createOperationsFixture(
     orderItemId: string,
     customer: FixtureUser = customerA,
   ): Promise<string> {
+    const warrantyStartsAt = new Date();
+    const warrantyExpiresAt = new Date(warrantyStartsAt);
+    warrantyExpiresAt.setUTCFullYear(warrantyExpiresAt.getUTCFullYear() + 1);
     const warranty = await client.warrantyRequest.create({
       data: {
         requestNumber: `${namespace.toUpperCase()}-WARRANTY-${randomUUID().slice(0, 8)}`,
         orderItemId,
         customerUserId: customer.id,
+        coverageType: 'DEVICE',
         issueType: 'Fixture issue',
         description: 'Created only for pagination and Operations tests.',
+        contactPhone: '0900000000',
+        warrantyStartsAt,
+        warrantyExpiresAt,
         assignedStaffUserId: staff.id,
       },
     });

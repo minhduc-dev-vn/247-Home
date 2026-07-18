@@ -96,6 +96,12 @@ enum WarrantyStatus {
   IN_REVIEW
   RESOLVED
   CLOSED
+  REJECTED
+}
+
+enum WarrantyCoverageType {
+  DEVICE
+  INSTALLATION
 }
 
 model User {
@@ -144,6 +150,7 @@ model ProductVariant {
   sku                  String                @unique
   name                 String
   priceVnd             BigInt                @map("price_vnd")
+  warrantyMonths       Int                   @default(12) @map("warranty_months")
   isActive             Boolean               @default(true) @map("is_active")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
@@ -364,6 +371,7 @@ model OrderItem {
   serviceUnitPrice    BigInt               @map("service_unit_price")
   unitPrice           BigInt               @map("unit_price")
   lineTotal           BigInt               @map("line_total")
+  warrantyMonths      Int                  @default(12) @map("warranty_months")
   createdAt           DateTime             @default(now()) @map("created_at")
   order               Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
   productVariant      ProductVariant       @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
@@ -496,23 +504,51 @@ model InstallationEvidence {
 }
 
 model WarrantyRequest {
-  id                  String         @id @default(cuid())
-  requestNumber       String         @unique @map("request_number")
-  orderItemId         String         @map("order_item_id")
-  customerUserId      String         @map("customer_user_id")
-  status              WarrantyStatus @default(SUBMITTED)
-  issueType           String         @map("issue_type")
+  id                  String               @id @default(cuid())
+  requestNumber       String               @unique @map("request_number")
+  orderItemId         String               @map("order_item_id")
+  customerUserId      String               @map("customer_user_id")
+  coverageType        WarrantyCoverageType @map("coverage_type")
+  status              WarrantyStatus       @default(SUBMITTED)
+  issueType           String               @map("issue_type")
   description         String
-  assignedStaffUserId String?        @map("assigned_staff_user_id")
-  submittedAt         DateTime       @default(now()) @map("submitted_at")
-  createdAt           DateTime       @default(now()) @map("created_at")
-  updatedAt           DateTime       @updatedAt @map("updated_at")
-  orderItem           OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
-  customer            User           @relation("WarrantyCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
-  assignedStaff       User?          @relation("WarrantyAssignee", fields: [assignedStaffUserId], references: [id], onDelete: SetNull)
+  contactPhone        String               @map("contact_phone")
+  publicResolution    String?              @map("public_resolution")
+  internalNote        String?              @map("internal_note")
+  assignedStaffUserId String?              @map("assigned_staff_user_id")
+  warrantyStartsAt    DateTime             @map("warranty_starts_at")
+  warrantyExpiresAt   DateTime             @map("warranty_expires_at")
+  submittedAt         DateTime             @default(now()) @map("submitted_at")
+  resolvedAt          DateTime?            @map("resolved_at")
+  closedAt            DateTime?            @map("closed_at")
+  rejectedAt          DateTime?            @map("rejected_at")
+  idempotencyHash     String?              @map("idempotency_hash")
+  requestFingerprint  String?              @map("request_fingerprint")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  version             Int                  @default(1)
+  orderItem           OrderItem            @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  customer            User                 @relation("WarrantyCustomer", fields: [customerUserId], references: [id], onDelete: Restrict)
+  assignedStaff       User?                @relation("WarrantyAssignee", fields: [assignedStaffUserId], references: [id], onDelete: SetNull)
+  evidence            WarrantyEvidence[]
 
+  @@unique([customerUserId, orderItemId, coverageType])
   @@index([status, createdAt])
+  @@index([customerUserId, createdAt])
   @@map("warranty_requests")
+}
+
+model WarrantyEvidence {
+  id                String          @id @default(cuid())
+  warrantyRequestId String          @map("warranty_request_id")
+  storageKey        String          @unique @map("storage_key")
+  mimeType          String          @map("mime_type")
+  byteSize          Int             @map("byte_size")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  warrantyRequest   WarrantyRequest @relation(fields: [warrantyRequestId], references: [id], onDelete: Restrict)
+
+  @@index([warrantyRequestId, createdAt])
+  @@map("warranty_evidence")
 }
 
 model CheckoutAttempt {

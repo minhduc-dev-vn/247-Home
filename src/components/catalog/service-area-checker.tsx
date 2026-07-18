@@ -1,6 +1,11 @@
 'use client';
 
+import { MapPin } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
+
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 type AreaResult =
   | {
@@ -11,70 +16,119 @@ type AreaResult =
 
 export function ServiceAreaChecker() {
   const [result, setResult] = useState<AreaResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
     setResult(null);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch('/api/v1/service-areas/check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provinceCode: form.get('provinceCode'),
-        districtCode: form.get('districtCode'),
-      }),
-    });
-    const payload: unknown = await response.json();
-    if (
-      response.ok &&
-      typeof payload === 'object' &&
-      payload &&
-      'data' in payload
-    ) {
-      setResult((payload as { data: AreaResult }).data);
+    setError(null);
+
+    try {
+      const form = new FormData(event.currentTarget);
+      const response = await fetch('/api/v1/service-areas/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provinceCode: form.get('provinceCode'),
+          districtCode: form.get('districtCode'),
+        }),
+      });
+      const payload: unknown = await response.json();
+      if (
+        response.ok &&
+        typeof payload === 'object' &&
+        payload &&
+        'data' in payload
+      ) {
+        setResult((payload as { data: AreaResult }).data);
+      } else {
+        setError('Không thể kiểm tra khu vực lúc này. Vui lòng thử lại.');
+      }
+    } catch {
+      setError('Không thể kết nối để kiểm tra khu vực. Vui lòng thử lại.');
+    } finally {
+      setPending(false);
     }
-    setPending(false);
   }
 
   return (
-    <section className="border-t py-10">
-      <h2 className="text-xl font-semibold">Kiem tra khu vuc lap dat</h2>
+    <section className="py-10 sm:py-12" aria-labelledby="service-area-title">
+      <div className="max-w-2xl">
+        <p className="flex items-center gap-2 text-sm font-bold text-[var(--primary)]">
+          <MapPin aria-hidden="true" className="size-4" />
+          Phạm vi phục vụ
+        </p>
+        <h2 className="mt-2 text-2xl font-bold" id="service-area-title">
+          Kiểm tra khu vực lắp đặt
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">
+          Nhập mã tỉnh/thành và quận/huyện để xác nhận dịch vụ tại địa chỉ của
+          bạn.
+        </p>
+      </div>
       <form
-        className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]"
+        className="mt-6 grid max-w-3xl gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
         onSubmit={onSubmit}
       >
-        <input
-          aria-label="Ma tinh thanh"
-          className="h-10 border bg-white px-3"
-          defaultValue="HCM"
-          name="provinceCode"
-          pattern="[A-Za-z0-9_-]+"
-          required
-        />
-        <input
-          aria-label="Ma quan huyen"
-          className="h-10 border bg-white px-3"
-          defaultValue="Q1"
-          name="districtCode"
-          pattern="[A-Za-z0-9_-]+"
-          required
-        />
-        <button
-          className="h-10 bg-[var(--primary)] px-4 font-medium text-white disabled:opacity-60"
-          disabled={pending}
-          type="submit"
-        >
-          {pending ? 'Dang kiem tra' : 'Kiem tra'}
-        </button>
+        <div>
+          <label
+            className="mb-2 block text-sm font-semibold"
+            htmlFor="province-code"
+          >
+            Mã tỉnh/thành
+          </label>
+          <Input
+            defaultValue="HCM"
+            id="province-code"
+            name="provinceCode"
+            pattern="[A-Za-z0-9_-]+"
+            required
+          />
+        </div>
+        <div>
+          <label
+            className="mb-2 block text-sm font-semibold"
+            htmlFor="district-code"
+          >
+            Mã quận/huyện
+          </label>
+          <Input
+            defaultValue="Q1"
+            id="district-code"
+            name="districtCode"
+            pattern="[A-Za-z0-9_-]+"
+            required
+          />
+        </div>
+        <Button loading={pending} type="submit">
+          Kiểm tra
+        </Button>
       </form>
       {result ? (
-        <p className="mt-3 text-sm text-[var(--muted)]" role="status">
+        <Alert
+          className="mt-4 max-w-3xl"
+          title={
+            result.status === 'SUPPORTED'
+              ? 'Dịch vụ khả dụng'
+              : 'Chưa hỗ trợ khu vực'
+          }
+          variant={result.status === 'SUPPORTED' ? 'success' : 'warning'}
+        >
           {result.status === 'SUPPORTED'
-            ? `Co phuc vu tai ${result.area.provinceName}, ${result.area.districtName}.`
-            : 'Khu vuc nay chua duoc ho tro.'}
-        </p>
+            ? `Có phục vụ tại ${result.area.provinceName}, ${result.area.districtName}.`
+            : 'Khu vực này chưa được hỗ trợ.'}
+        </Alert>
+      ) : null}
+      {error ? (
+        <Alert
+          className="mt-4 max-w-3xl"
+          title="Kiểm tra thất bại"
+          variant="error"
+        >
+          {error}
+        </Alert>
       ) : null}
     </section>
   );

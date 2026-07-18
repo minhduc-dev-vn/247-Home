@@ -16,7 +16,8 @@ type ErrorCode =
   | 'STORAGE_UNAVAILABLE'
   | 'UNAUTHENTICATED'
   | 'UNSUPPORTED_MEDIA_TYPE'
-  | 'VALIDATION_ERROR';
+  | 'VALIDATION_ERROR'
+  | 'WARRANTY_NOT_ELIGIBLE';
 
 type ResponseInitWithHeaders = ResponseInit & { headers?: HeadersInit };
 

@@ -99,6 +99,7 @@ const cartSelect = {
           sku: true,
           name: true,
           priceVnd: true,
+          warrantyMonths: true,
           isActive: true,
           product: { select: { name: true, status: true } },
           inventory: { select: { onHand: true, reserved: true } },
@@ -538,6 +539,7 @@ export async function checkout(
             serviceUnitPrice: service,
             unitPrice: unit,
             lineTotal: total,
+            warrantyMonths: item.productVariant.warrantyMonths,
           })),
         },
         payment: {

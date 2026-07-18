@@ -4,13 +4,18 @@ test('shows seeded products and checks a supported service area', async ({
   page,
 }) => {
   await page.goto('/products');
-  await expect(page.getByRole('heading', { name: 'San pham' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Thiết bị gia dụng chính hãng' }),
+  ).toBeVisible();
   await expect(page.getByRole('article')).toHaveCount(12);
 
-  await page.getByLabel('Ma tinh thanh').fill('HCM');
-  await page.getByLabel('Ma quan huyen').fill('Q1');
-  await page.getByRole('button', { name: 'Kiem tra' }).click();
-  await expect(page.getByRole('status')).toContainText('Co phuc vu');
+  const areaChecker = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Kiểm tra khu vực lắp đặt' }),
+  });
+  await areaChecker.getByLabel('Mã tỉnh/thành').fill('HCM');
+  await areaChecker.getByLabel('Mã quận/huyện').fill('Q1');
+  await areaChecker.getByRole('button', { name: 'Kiểm tra' }).click();
+  await expect(areaChecker.getByRole('status')).toContainText('Có phục vụ');
 });
 
 test('prevents a signed-in customer from viewing the catalog administration page', async ({

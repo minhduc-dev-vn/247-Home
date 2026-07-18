@@ -94,13 +94,19 @@ export function validateEvidenceUpload(
   };
 }
 
-export function createEvidenceStorageKey(extension: string): string {
-  return `installation-evidence/${randomUUID()}${extension}`;
+export function createEvidenceStorageKey(
+  extension: string,
+  purpose: StorageUploadInput['purpose'] = 'installation',
+): string {
+  if (purpose !== 'installation' && purpose !== 'warranty') {
+    throw new StorageValidationError('Invalid evidence purpose.');
+  }
+  return `${purpose}-evidence/${randomUUID()}${extension}`;
 }
 
 export function assertEvidenceStorageKey(storageKey: string): string {
   if (
-    !/^installation-evidence\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/.test(
+    !/^(installation|warranty)-evidence\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/.test(
       storageKey,
     )
   )

@@ -65,7 +65,10 @@ export class S3ObjectStorageAdapter implements PrivateObjectStorage {
 
   async upload(input: StorageUploadInput): Promise<StoredPrivateObject> {
     const validated = validateEvidenceUpload(input);
-    const storageKey = createEvidenceStorageKey(validated.extension);
+    const storageKey = createEvidenceStorageKey(
+      validated.extension,
+      input.purpose,
+    );
     try {
       await this.client.send(
         new PutObjectCommand({

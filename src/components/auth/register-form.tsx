@@ -6,8 +6,11 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { registrationSchema } from '@/modules/identity/presentation/schemas';
 import { useHydrated } from '@/components/auth/use-hydrated';
+import { Alert } from '@/components/ui/alert';
+import { PrimaryButton } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { registrationSchema } from '@/modules/identity/presentation/schemas';
 
 type RegistrationFormValues = { name: string; email: string; password: string };
 
@@ -26,12 +29,10 @@ export function RegisterForm() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(values),
     });
-
     if (!response.ok) {
       setMessage('Không thể tạo tài khoản. Vui lòng kiểm tra lại thông tin.');
       return;
     }
-
     const result = await signIn('credentials', {
       email: values.email,
       password: values.password,
@@ -41,66 +42,84 @@ export function RegisterForm() {
       router.push('/login');
       return;
     }
-
     router.push('/account');
     router.refresh();
   }
 
+  const fields = [
+    {
+      autoComplete: 'name',
+      error: form.formState.errors.name,
+      id: 'register-name',
+      label: 'Họ tên',
+      name: 'name' as const,
+      type: 'text',
+      errorText: 'Nhập họ tên của bạn.',
+    },
+    {
+      autoComplete: 'email',
+      error: form.formState.errors.email,
+      id: 'register-email',
+      label: 'Email',
+      name: 'email' as const,
+      type: 'email',
+      errorText: 'Email không hợp lệ.',
+    },
+    {
+      autoComplete: 'new-password',
+      error: form.formState.errors.password,
+      id: 'register-password',
+      label: 'Mật khẩu',
+      name: 'password' as const,
+      type: 'password',
+      errorText: 'Mật khẩu phải có ít nhất 12 ký tự.',
+    },
+  ];
+
   return (
     <form
-      className="space-y-4"
+      className="space-y-5"
       method="post"
       onSubmit={(event) => {
         event.preventDefault();
         void form.handleSubmit(onSubmit)(event);
       }}
     >
-      <label className="block text-sm font-medium">
-        Họ tên
-        <input
-          className="mt-1 block w-full rounded-md border bg-white px-3 py-2"
-          {...form.register('name')}
-        />
-        {form.formState.errors.name && (
-          <span className="mt-1 block text-sm text-red-700">
-            Nhập họ tên của bạn.
-          </span>
-        )}
-      </label>
-      <label className="block text-sm font-medium">
-        Email
-        <input
-          className="mt-1 block w-full rounded-md border bg-white px-3 py-2"
-          type="email"
-          {...form.register('email')}
-        />
-        {form.formState.errors.email && (
-          <span className="mt-1 block text-sm text-red-700">
-            Email không hợp lệ.
-          </span>
-        )}
-      </label>
-      <label className="block text-sm font-medium">
-        Mật khẩu
-        <input
-          className="mt-1 block w-full rounded-md border bg-white px-3 py-2"
-          type="password"
-          {...form.register('password')}
-        />
-        {form.formState.errors.password && (
-          <span className="mt-1 block text-sm text-red-700">
-            Mật khẩu phải có ít nhất 12 ký tự.
-          </span>
-        )}
-      </label>
-      {message && <p className="text-sm text-red-700">{message}</p>}
-      <button
-        className="rounded-md bg-[var(--primary)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        disabled={!isHydrated || form.formState.isSubmitting}
+      {fields.map((field) => (
+        <label
+          className="block text-sm font-semibold"
+          htmlFor={field.id}
+          key={field.id}
+        >
+          {field.label}
+          <Input
+            aria-describedby={field.error ? `${field.id}-error` : undefined}
+            aria-invalid={Boolean(field.error)}
+            autoComplete={field.autoComplete}
+            className="mt-2"
+            id={field.id}
+            type={field.type}
+            {...form.register(field.name)}
+          />
+          {field.error ? (
+            <span
+              className="mt-1.5 block text-sm text-[var(--error)]"
+              id={`${field.id}-error`}
+            >
+              {field.errorText}
+            </span>
+          ) : null}
+        </label>
+      ))}
+      {message ? <Alert variant="error">{message}</Alert> : null}
+      <PrimaryButton
+        className="w-full"
+        disabled={!isHydrated}
+        loading={form.formState.isSubmitting}
         type="submit"
       >
         Tạo tài khoản
-      </button>
+      </PrimaryButton>
     </form>
   );
 }

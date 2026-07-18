@@ -630,6 +630,7 @@ Yêu cầu bảo hành cho order item thuộc customer.
 | `request_number` | text | no | Unique |
 | `order_item_id` | uuid | no | FK |
 | `customer_user_id` | uuid | no | Owner, denormalized để scope hiệu quả |
+| `coverage_type` | warranty_coverage_type | no | `DEVICE` hoặc `INSTALLATION` snapshot |
 | `status` | warranty_status | no | |
 | `issue_type` | text/enum | no | Allowlist |
 | `description` | text | no | Plain text, length limit |
@@ -637,9 +638,14 @@ Yêu cầu bảo hành cho order item thuộc customer.
 | `public_resolution` | text | yes | Customer xem được |
 | `internal_note` | text | yes | Chỉ vận hành |
 | `assigned_staff_user_id` | uuid | yes | |
+| `warranty_starts_at` | timestamptz | no | Snapshot từ order completion |
+| `warranty_expires_at` | timestamptz | no | Snapshot theo warranty months |
 | `submitted_at` | timestamptz | no | |
 | `resolved_at` | timestamptz | yes | |
 | `closed_at` | timestamptz | yes | |
+| `rejected_at` | timestamptz | yes | |
+| `idempotency_hash` | text | yes | SHA-256; null chỉ cho row legacy |
+| `request_fingerprint` | text | yes | SHA-256 canonical create payload |
 | `created_at` | timestamptz | no | |
 | `updated_at` | timestamptz | no | |
 | `version` | integer | no | |
@@ -652,7 +658,11 @@ Constraint/index:
 - Check version > 0.
 - Server xác minh `order_items -> orders.user_id = customer_user_id`.
 - Eligibility dùng `order.completed_at + warranty_months`; policy ngày chính xác cần duyệt.
-- Giới hạn một request mở/order item nếu policy yêu cầu bằng partial unique index.
+- Unique `(customer_user_id, order_item_id, coverage_type)` chống duplicate và race.
+- Partial unique `(customer_user_id, idempotency_hash)` khi hash khác null; hai hash
+  phải cùng null hoặc cùng là SHA-256 64 ký tự.
+- `warranty_evidence` lưu metadata private object; key unique, size 1..5 MiB,
+  FK restrict và index `(warranty_request_id, created_at)`.
 
 ### 5.20 `audit_logs`
 

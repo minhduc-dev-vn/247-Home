@@ -1,15 +1,20 @@
 'use client';
 
+import { LogOut } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 
-export function SignOutButton() {
+import { SecondaryButton } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+export function SignOutButton({ className }: { className?: string }) {
   return (
-    <button
-      className="rounded-md border px-4 py-2 text-sm font-medium"
+    <SecondaryButton
+      className={cn(className)}
       onClick={() => signOut({ callbackUrl: '/' })}
       type="button"
     >
+      <LogOut aria-hidden="true" className="size-4" />
       Đăng xuất
-    </button>
+    </SecondaryButton>
   );
 }

@@ -320,7 +320,10 @@ Trước nghiệm thu MVP:
 2. Rate-limit production storage chưa thiết kế vì không deploy production.
 3. Retention/anonymization PII và audit chưa có quyết định pháp lý.
 4. Insider payment/inventory có cần dual approval.
-5. Upload ảnh warranty ngoài MVP; nếu thêm phải threat-model storage, MIME, malware và signed URL.
+5. Upload ảnh warranty dùng private storage port, key server-side, MIME/extension/
+   signature validation, giới hạn 5 MiB, authorization preview và compensation khi
+   persistence lỗi. Malware scanning và retention lifecycle vẫn cần duyệt trước
+   production; hiện chỉ nhận JPEG/PNG/WebP, không nhận tài liệu chủ động/PDF.
 6. Address normalization provider có thể thêm SSRF/privacy/vendor risk.
 7. CSP chính xác phụ thuộc Auth provider/image source.
 8. Recovery/MFA/step-up cho ADMIN chưa chốt.

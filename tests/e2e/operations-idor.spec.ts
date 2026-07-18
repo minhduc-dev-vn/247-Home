@@ -13,10 +13,19 @@ test('a different technician cannot read or transition another technician assign
     const context = await newContext();
     const page = await context.newPage();
     await login(page, fixture.users.technicianB.email);
-    await page.goto('/technician');
+    await page.goto('/technician/orders');
     await expect(
       page.getByText(fixture.appointments.assigned.orderNumber),
     ).toHaveCount(0);
+
+    await page.goto(
+      `/technician/orders/${fixture.appointments.assigned.assignmentId}`,
+    );
+    await expect(page.getByText('Không thể mở công việc')).toBeVisible();
+    await expect(
+      page.getByText(fixture.appointments.assigned.orderNumber),
+    ).toHaveCount(0);
+    await expect(page.getByText('Customer A')).toHaveCount(0);
 
     const detail = await requestJson<{ error: { code: string } }>(
       page,
