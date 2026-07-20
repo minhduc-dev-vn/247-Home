@@ -60,7 +60,7 @@ export function WarrantyTimeline({ status }: { status: WarrantyStatus }) {
               <span
                 aria-hidden="true"
                 className={cn(
-                  'absolute top-4 right-1/2 h-0.5 w-full',
+                  'motion-timeline-line absolute top-4 right-1/2 h-0.5 w-full',
                   reached ? 'bg-[var(--primary)]' : 'bg-[var(--border)]',
                 )}
               />
@@ -68,11 +68,12 @@ export function WarrantyTimeline({ status }: { status: WarrantyStatus }) {
             <div className="relative flex flex-col items-center text-center">
               <span
                 className={cn(
-                  'grid size-8 place-items-center rounded-full border bg-[var(--surface)]',
+                  'motion-timeline-node grid size-8 place-items-center rounded-full border bg-[var(--surface)]',
                   reached
                     ? 'border-[var(--primary)] text-[var(--primary)]'
                     : 'text-[var(--muted)]',
                 )}
+                data-current={index === currentIndex ? 'true' : undefined}
               >
                 {reached ? (
                   <Check aria-hidden="true" className="size-4" />

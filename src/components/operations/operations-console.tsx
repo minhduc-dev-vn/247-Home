@@ -295,7 +295,7 @@ function Dialog({
       <section
         aria-modal="true"
         aria-labelledby={titleId}
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg border bg-[var(--surface)] shadow-[var(--shadow-modal)]"
+        className="motion-dialog max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg border bg-[var(--surface)] shadow-[var(--shadow-modal)]"
         role="dialog"
       >
         <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-[var(--surface)] px-5 py-4">
@@ -640,7 +640,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
   ];
 
   return (
-    <main className="mx-auto min-h-0 max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto min-h-0 w-full max-w-[1440px] min-w-0 px-4 py-6 sm:px-6 lg:px-8">
       <header>
         <Breadcrumb
           items={[{ href: '/admin', label: 'Quản trị' }, { label: 'Vận hành' }]}
@@ -707,7 +707,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
           },
         ].map((metric) => (
           <Card
-            className="min-w-0"
+            className="motion-card-interactive min-w-0"
             data-testid="operations-metric"
             key={metric.label}
           >
@@ -739,7 +739,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
               aria-label={item.label}
               aria-selected={tab === item.id}
               className={cn(
-                'inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors',
+                'inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-[color,background-color,transform] duration-200 active:scale-[0.97] motion-reduce:transform-none',
                 tab === item.id
                   ? 'bg-[var(--primary)] text-[var(--primary-foreground)]'
                   : 'text-[var(--muted)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]',
@@ -836,7 +836,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
                   <tbody>
                     {visibleOrders.map((order) => (
                       <tr
-                        className="hover:bg-[var(--surface-subtle)]"
+                        className="motion-table-row hover:bg-[var(--surface-subtle)]"
                         key={order.id}
                       >
                         <td className="font-semibold text-[var(--primary)]">
@@ -963,7 +963,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
                   <tbody>
                     {visibleAppointments.map((item) => (
                       <tr
-                        className="hover:bg-[var(--surface-subtle)]"
+                        className="motion-table-row hover:bg-[var(--surface-subtle)]"
                         key={item.id}
                       >
                         <td>
@@ -1098,7 +1098,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
                   <tbody>
                     {warranties.data?.items.map((item) => (
                       <tr
-                        className="hover:bg-[var(--surface-subtle)]"
+                        className="motion-table-row hover:bg-[var(--surface-subtle)]"
                         key={item.id}
                       >
                         <td className="font-semibold">{item.requestNumber}</td>
@@ -1178,7 +1178,7 @@ export function OperationsConsole({ roles }: { roles: Roles }) {
                   <tbody>
                     {audit.data?.items.map((item) => (
                       <tr
-                        className="hover:bg-[var(--surface-subtle)]"
+                        className="motion-table-row hover:bg-[var(--surface-subtle)]"
                         key={item.id}
                       >
                         <td>{formatDate(item.createdAt)}</td>

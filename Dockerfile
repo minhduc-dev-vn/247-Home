@@ -73,6 +73,9 @@ RUN apk upgrade --no-cache \
 WORKDIR /app
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+RUN test -s /app/public/images/smart-home-entryway.png \
+    && test -s /app/public/assets/images/products/khoa-cua-l2.png
 
 USER nextjs
 EXPOSE 3000

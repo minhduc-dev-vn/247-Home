@@ -24,7 +24,7 @@ export function Table({
   return (
     <table
       className={cn(
-        'w-full min-w-[640px] border-collapse text-left text-sm [&_td]:border-t [&_td]:px-4 [&_td]:py-3 [&_th]:bg-[var(--surface-subtle)] [&_th]:px-4 [&_th]:py-3 [&_th]:font-semibold [&_th]:text-[var(--muted-foreground)]',
+        'w-full min-w-[640px] border-collapse text-left text-sm [&_tbody_tr]:transition-[background-color,box-shadow] [&_tbody_tr]:duration-150 [&_tbody_tr:hover]:bg-[var(--surface-subtle)] [&_tbody_tr:hover]:shadow-[inset_3px_0_0_var(--primary)] [&_td]:border-t [&_td]:px-4 [&_td]:py-3 [&_th]:bg-[var(--surface-subtle)] [&_th]:px-4 [&_th]:py-3 [&_th]:font-semibold [&_th]:text-[var(--muted-foreground)]',
         className,
       )}
       {...props}

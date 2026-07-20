@@ -79,7 +79,11 @@ test('filters by a real catalog category and supports an empty result', async ({
   const first = catalog.data.items[0];
 
   await page.goto(`/products?category=${first.category}`);
-  await expect(page.locator('a[aria-current="page"]')).not.toHaveText('Tất cả');
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Danh mục sản phẩm' })
+      .locator('a[aria-current="page"]'),
+  ).not.toHaveText('Tất cả');
   await expect(page.getByTestId('product-card').first()).toBeVisible();
 
   await page.goto('/products?q=khong-ton-tai-247-home-e2e');

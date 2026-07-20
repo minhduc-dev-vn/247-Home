@@ -24,6 +24,7 @@
     "test:storage-server": "tsx tests/support/s3-compatible-test-server.ts",
     "audit:prod": "tsx scripts/audit-production-dependencies.ts",
     "cleanup:operations-fixtures": "tsx scripts/cleanup-operations-fixtures.ts",
+    "screenshots:animation": "tsx scripts/capture-animation-screenshots.ts",
     "demo:bootstrap": "tsx scripts/demo-bootstrap.ts",
     "demo:reset": "tsx scripts/demo-compose-reset.ts",
     "demo:reset:database": "tsx scripts/demo-reset.ts",
@@ -36,7 +37,8 @@
     "db:down": "docker compose down",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:seed:staging": "tsx prisma/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

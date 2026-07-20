@@ -162,7 +162,7 @@ export function ProductFilters({ values }: { values: FilterValues }) {
         </button>
         <dialog
           aria-labelledby="mobile-product-filter-title"
-          className="m-0 ml-auto h-dvh max-h-none w-[min(23rem,calc(100vw-1.5rem))] max-w-none border-l bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[var(--shadow-modal)] backdrop:bg-[#17242b]/55"
+          className="motion-drawer m-0 ml-auto h-dvh max-h-none w-[min(23rem,calc(100vw-1.5rem))] max-w-none border-l bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[var(--shadow-modal)] backdrop:bg-[#17242b]/55"
           data-testid="mobile-product-filter-drawer"
           id="mobile-product-filter-dialog"
           onClose={() => setMobileOpen(false)}

@@ -7,6 +7,7 @@ import {
   Send,
   ShieldCheck,
 } from 'lucide-react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 
@@ -209,9 +210,13 @@ export function WarrantyCreateForm({
 }
 
 export function WarrantyEvidenceUploader({
+  existingEvidenceIds,
+  nextEvidenceIndex,
   requestId,
   expectedVersion,
 }: {
+  existingEvidenceIds: string[];
+  nextEvidenceIndex: number;
   requestId: string;
   expectedVersion: number;
 }) {
@@ -219,11 +224,16 @@ export function WarrantyEvidenceUploader({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState(false);
+  const [uploadedEvidence, setUploadedEvidence] = useState<{
+    byteSize: number;
+    id: string;
+  }>();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const file = form.get('evidence');
     if (!(file instanceof File) || !file.size) {
       setError('Vui lòng chọn một tệp ảnh.');
@@ -258,8 +268,21 @@ export function WarrantyEvidenceUploader({
         }),
       });
       if (!response.ok) throw new Error(await responseError(response));
+      const body = (await response.json()) as {
+        data?: { byteSize?: unknown; id?: unknown };
+      };
+      if (
+        typeof body.data?.id !== 'string' ||
+        typeof body.data.byteSize !== 'number'
+      ) {
+        throw new Error('Phản hồi tải ảnh không hợp lệ.');
+      }
+      setUploadedEvidence({
+        byteSize: body.data.byteSize,
+        id: body.data.id,
+      });
       setSuccess(true);
-      event.currentTarget.reset();
+      formElement.reset();
       router.refresh();
     } catch (caught) {
       setError(
@@ -272,7 +295,11 @@ export function WarrantyEvidenceUploader({
   }
 
   return (
-    <form onSubmit={submit}>
+    <form
+      aria-busy={pending || undefined}
+      className="transition-opacity duration-200 aria-busy:opacity-70"
+      onSubmit={submit}
+    >
       <label className="text-sm font-semibold" htmlFor="warranty-evidence">
         Ảnh hiện trạng
       </label>
@@ -296,6 +323,26 @@ export function WarrantyEvidenceUploader({
           <CheckCircle2 aria-hidden="true" className="sr-only" />
           Ảnh đã được lưu an toàn.
         </Alert>
+      ) : null}
+      {uploadedEvidence &&
+      !existingEvidenceIds.includes(uploadedEvidence.id) ? (
+        <a
+          className="mt-4 block overflow-hidden rounded-lg border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]"
+          href={`/api/v1/warranty/${requestId}/evidence/${uploadedEvidence.id}`}
+          target="_blank"
+        >
+          <Image
+            alt={`Ảnh hiện trạng bảo hành ${nextEvidenceIndex}`}
+            className="aspect-[4/3] w-full object-cover"
+            height={360}
+            src={`/api/v1/warranty/${requestId}/evidence/${uploadedEvidence.id}`}
+            unoptimized
+            width={480}
+          />
+          <span className="block px-3 py-2 text-xs text-[var(--muted)]">
+            {Math.ceil(uploadedEvidence.byteSize / 1024)} KB
+          </span>
+        </a>
       ) : null}
       <Button
         className="mt-4 w-full sm:w-fit"

@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { createHash } from 'node:crypto';
 
+import { resolveSeedRuntime } from '../scripts/seed-runtime';
+
 const roleCodes = [
   'CUSTOMER',
   'STAFF',
@@ -9,8 +11,6 @@ const roleCodes = [
   'MANAGER',
   'ADMIN',
 ] as const;
-const demoPassword = 'LocalDemoOnly-247Home';
-
 function deterministicSeedCuid(scope: string, value: string) {
   return `c${createHash('sha256').update(`${scope}:${value}`).digest('hex').slice(0, 24)}`;
 }
@@ -141,20 +141,16 @@ const demoProducts = [
 const prisma = new PrismaClient();
 
 async function main() {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'Seed data is only available in development and test environments.',
-    );
-  }
+  const seedRuntime = resolveSeedRuntime(process.env);
 
   await prisma.bootstrapMarker.upsert({
-    where: { id: 'local-demo' },
+    where: { id: seedRuntime.markerId },
     create: {
-      id: 'local-demo',
-      label: '247 Home local demo marker',
+      id: seedRuntime.markerId,
+      label: seedRuntime.markerLabel,
     },
     update: {
-      label: '247 Home local demo marker',
+      label: seedRuntime.markerLabel,
     },
   });
 
@@ -164,7 +160,7 @@ async function main() {
     ),
   );
 
-  const passwordHash = await hash(demoPassword, 12);
+  const passwordHash = await hash(seedRuntime.password, 12);
   const [adminRole, customerRole, technicianRole, managerRole, staffRole] =
     await Promise.all([
       prisma.role.findUniqueOrThrow({ where: { code: 'ADMIN' } }),
@@ -816,7 +812,7 @@ async function main() {
         technicianId: technicianProfile.id,
       },
       reason: 'Synthetic local demo assignment',
-      requestId: 'local-demo-assignment-seed',
+      requestId: `${seedRuntime.requestIdPrefix}-assignment-seed`,
     },
     update: {
       actorUserId: manager.id,
@@ -940,7 +936,7 @@ async function main() {
       before: { status: 'PENDING_CONFIRMATION' },
       after: { status: 'CANCELLED', inventoryStatus: 'RELEASED' },
       reason: 'Synthetic local demo cancellation',
-      requestId: 'local-demo-cancelled-order-seed',
+      requestId: `${seedRuntime.requestIdPrefix}-cancelled-order-seed`,
     },
     update: {
       actorUserId: manager.id,

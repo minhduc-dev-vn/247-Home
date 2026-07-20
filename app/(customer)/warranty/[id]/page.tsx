@@ -251,7 +251,11 @@ export default async function WarrantyDetailPage({
                   {canUpload ? (
                     <div className="mt-6 border-t pt-5">
                       <WarrantyEvidenceUploader
+                        existingEvidenceIds={request.evidence.map(
+                          (evidence) => evidence.id,
+                        )}
                         expectedVersion={request.version}
+                        nextEvidenceIndex={request.evidence.length + 1}
                         requestId={request.id}
                       />
                     </div>

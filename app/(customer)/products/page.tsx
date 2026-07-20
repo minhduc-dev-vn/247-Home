@@ -10,6 +10,7 @@ import { ProductCard } from '@/components/catalog/product-card';
 import { ProductFilters } from '@/components/catalog/product-filters';
 import { ServiceAreaChecker } from '@/components/catalog/service-area-checker';
 import { Container } from '@/components/layout/container';
+import { Reveal } from '@/components/motion/reveal';
 import { Breadcrumb } from '@/components/navigation/breadcrumb';
 import { Pagination } from '@/components/navigation/pagination';
 import { buttonVariants } from '@/components/ui/button';
@@ -93,7 +94,7 @@ export default async function ProductsPage({
           <Breadcrumb
             items={[{ href: '/', label: 'Trang chủ' }, { label: 'Sản phẩm' }]}
           />
-          <div className="mt-7 max-w-3xl">
+          <Reveal className="mt-7 max-w-3xl">
             <p className="text-sm font-bold text-[var(--primary)]">
               Catalog 247 Home
             </p>
@@ -104,7 +105,7 @@ export default async function ProductsPage({
               Tìm kiếm thiết bị phù hợp cho ngôi nhà của bạn cùng dịch vụ lắp
               đặt chuyên nghiệp từ 247 Home.
             </p>
-          </div>
+          </Reveal>
         </Container>
       </section>
 
@@ -192,9 +193,11 @@ export default async function ProductsPage({
                   aria-label="Danh sách sản phẩm"
                   className="mt-6 grid min-w-0 gap-5 sm:grid-cols-2 xl:grid-cols-3"
                 >
-                  {products.map((product) => (
+                  {products.map((product, index) => (
                     <article data-testid="product-card" key={product.id}>
-                      <ProductCard product={product} />
+                      <Reveal className="h-full" delay={index * 55}>
+                        <ProductCard product={product} />
+                      </Reveal>
                     </article>
                   ))}
                 </div>
@@ -232,7 +235,9 @@ export default async function ProductsPage({
 
       <section className="border-t bg-[var(--surface)]">
         <Container>
-          <ServiceAreaChecker />
+          <Reveal>
+            <ServiceAreaChecker />
+          </Reveal>
         </Container>
       </section>
     </main>

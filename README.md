@@ -361,8 +361,9 @@ Ghi quyết định accepted trong `docs/decisions/ADR-*.md`, rồi cập nhật
 - Tailwind CSS v4 và shadcn/ui baseline đã cấu hình tại `components.json`.
 - Docker Compose có production-like app, PostgreSQL và private MinIO local; các
   volume được giữ lại khi dừng container.
-- Prisma có technical marker; seed hiện tại bổ sung catalog, user, order và dữ
-  liệu Operations chỉ cho development/test.
+- Prisma có technical marker; seed bổ sung catalog, user, order và dữ liệu
+  Operations cho local development/test hoặc Render staging được xác nhận rõ
+  ràng. Seed local bị chặn khi database không phải local.
 - `GET /api/health` kiểm process; `GET /api/ready` kiểm PostgreSQL với timeout và không lộ cấu hình/credential.
 - Error boundary, trang 404, security headers, test Vitest/Playwright và GitHub Actions CI đã có.
 - Không có workflow deploy hoặc secret repository.
@@ -377,7 +378,9 @@ Rollback bootstrap: dừng Compose bằng `pnpm db:down`, revert application và
 - Seed local/test tạo `admin@example.com`, `manager@example.com`,
   `customer@example.com`, `technician1@example.com` và
   `technician2@example.com` với password công khai
-  `LocalDemoOnly-247Home`; seed từ chối chạy khi `NODE_ENV=production`.
+  `LocalDemoOnly-247Home`. Render staging phải dùng `db:seed:staging`,
+  `SEED_TARGET=staging`, confirmation cố định và `STAGING_DEMO_PASSWORD` mạnh
+  từ secret của operator; password local công khai bị từ chối.
 
 ## 18. Product Catalog and Inventory
 
@@ -388,7 +391,10 @@ Rollback bootstrap: dừng Compose bằng `pnpm db:down`, revert application và
 - Local development image upload is a mock provider only. It accepts JPEG, PNG and WebP up to 2 MB after extension, MIME and file-signature validation, stores generated filenames in `.local-uploads/` and is disabled in production.
 - `pnpm db:seed` creates 12 active demo products, 4 compatible installation
   packages, 3 customer-facing service areas and one isolated Operations demo
-  area. It remains development/test-only and contains no production credential.
+  area. It is restricted to local databases. `pnpm db:seed:staging` provides the
+  same idempotent synthetic dataset only for an explicitly confirmed Render
+  staging database and reads its password from the environment; neither command
+  is a production seed.
 
 No production dependency was added for this slice. Local image storage uses Node.js built-ins only; production object storage, malware scanning and signed delivery need a separate approved design before deployment.
 

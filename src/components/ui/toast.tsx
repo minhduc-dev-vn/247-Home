@@ -17,7 +17,7 @@ export function Toast({
   return (
     <div
       className={cn(
-        'flex w-full max-w-sm items-start gap-3 rounded-md border bg-[var(--surface)] p-4 shadow-[var(--shadow-modal)]',
+        'motion-feedback flex w-full max-w-sm items-start gap-3 rounded-md border bg-[var(--surface)] p-4 shadow-[var(--shadow-modal)]',
         className,
       )}
       role="status"

@@ -197,7 +197,7 @@ function TimelineItem({
         <span
           aria-hidden="true"
           className={cn(
-            'absolute top-7 bottom-0 left-[0.9375rem] w-px',
+            'motion-timeline-line absolute top-7 bottom-0 left-[0.9375rem] w-px',
             state === 'complete' ? 'bg-[var(--success)]' : 'bg-[var(--border)]',
           )}
         />
@@ -205,13 +205,14 @@ function TimelineItem({
       <span
         aria-hidden="true"
         className={cn(
-          'relative z-10 grid size-8 place-items-center rounded-full border bg-[var(--surface)]',
+          'motion-timeline-node relative z-10 grid size-8 place-items-center rounded-full border bg-[var(--surface)]',
           state === 'complete' &&
             'border-[var(--success)] bg-[var(--success-soft)] text-[var(--success)]',
           state === 'current' &&
             'border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary)]',
           state === 'upcoming' && 'text-[var(--muted)]',
         )}
+        data-current={state === 'current' ? 'true' : undefined}
       >
         <Icon className="size-4" />
       </span>

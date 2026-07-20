@@ -34,7 +34,7 @@ export function ProductCard({ product }: { product: CatalogProduct }) {
 
   return (
     <Card
-      className="group flex h-full min-w-0 flex-col overflow-hidden transition-shadow hover:shadow-[var(--shadow-modal)]"
+      className="motion-card-interactive group flex h-full min-w-0 flex-col overflow-hidden"
       data-testid="featured-product-card"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-[var(--surface-subtle)]">

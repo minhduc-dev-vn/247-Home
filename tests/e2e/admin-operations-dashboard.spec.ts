@@ -88,10 +88,13 @@ test('operations dashboard keeps page-level responsive boundaries', async ({
       await page.setViewportSize(viewport);
       await page.goto('/admin/operations');
       await expect(page.getByRole('tab', { name: 'Don hang' })).toBeVisible();
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollWidth > window.innerWidth,
-      );
-      expect(overflow).toBe(false);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth > window.innerWidth,
+          ),
+        )
+        .toBe(false);
     }
   });
 });
