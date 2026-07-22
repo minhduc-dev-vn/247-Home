@@ -28,7 +28,8 @@ Thiết kế ưu tiên:
 | ADR-010 | VND lưu integer (`BIGINT`) | Tránh sai số số thực | API biểu diễn money bằng decimal string để tránh giới hạn JavaScript |
 | ADR-011 | Timestamp lưu `timestamptz` UTC; hiển thị `Asia/Ho_Chi_Minh` | Nhất quán lịch | Slot request dùng ISO 8601 có offset hoặc ID slot |
 | ADR-012 | Một kho logic, một appointment hiệu lực/order trong MVP | Giảm độ phức tạp | Mở rộng nhiều kho cần ADR/schema mới |
-| ADR-013 | Không payment gateway; chỉ COD/chuyển khoản thủ công | Đúng phạm vi | Không lưu thẻ; payment update cần nhân sự được phép |
+| ADR-013 | COD/chuyển khoản thủ công trong MVP ban đầu | Superseded một phần bởi ADR-014 | Manual payment vẫn giữ policy hiện tại |
+| ADR-014 | VNPay online payment qua signed redirect/IPN | Accepted | Không lưu thẻ; IPN server là nguồn sự thật |
 | ADR-014 | Optimistic version cho aggregate và pessimistic lock cho tài nguyên khan hiếm | Ngăn lost update và oversubscription | Client mutation gửi `expectedVersion` khi cần |
 | ADR-015 | Combo MVP được bán qua service package gắn variant; bundle nhiều SKU cần duyệt thêm | Phù hợp bảng tối thiểu, tránh inventory bundle mơ hồ | Chưa coi package là SKU tồn kho độc lập |
 
@@ -57,7 +58,10 @@ STAFF / TECHNICIAN / MANAGER / ADMIN
         +------------- HTTPS ------------^
 ```
 
-Không có microservice, message broker, payment gateway hoặc production infrastructure trong MVP. Email/SMS/object storage chưa được cam kết.
+Không có microservice hoặc message broker trong MVP. ADR-014 bổ sung VNPay
+qua hosted redirect và signed IPN trong chính modular monolith; ứng dụng không
+xử lý hay lưu dữ liệu thẻ. Email/SMS và production infrastructure chưa được
+cam kết bởi tài liệu này.
 
 ## 4. Container view
 
@@ -177,7 +181,7 @@ module/
 | service-areas | Match địa chỉ với vùng, cấu hình vùng/capacity | service_areas và cấu hình slot theo schema được duyệt | audit |
 | checkout | Orchestrate quote, inventory, slot, order/payment | idempotency thuộc orders hoặc bảng riêng nếu duyệt | cart, pricing, inventory, installations, orders, payments |
 | orders | Order aggregate và state machine | orders, order_items | inventory, installations, payments, audit |
-| payments | COD/chuyển khoản thủ công | payments | orders, audit |
+| payments | COD/chuyển khoản thủ công và VNPay session/IPN | payments, payment_sessions, payment_webhook_events | orders, audit |
 | installations | Appointment, capacity, state machine | installation_appointments | orders, service-areas, technicians, audit |
 | technicians | Technician profile và assignment | technicians, technician_assignments | identity, installations, audit |
 | warranties | Warranty eligibility và lifecycle | warranty_requests | orders, audit |

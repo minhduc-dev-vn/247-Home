@@ -269,6 +269,24 @@ export default async function OrderPage({
                         </dd>
                       </div>
                     ) : null}
+                    {order.payment.providerTransactionId ? (
+                      <div className="border-t pt-4">
+                        <dt className="text-[var(--muted)]">
+                          Mã giao dịch VNPay
+                        </dt>
+                        <dd className="mt-1 font-mono text-xs break-all">
+                          {order.payment.providerTransactionId}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {order.payment.paidAt ? (
+                      <div className="flex items-start justify-between gap-4 border-t pt-4">
+                        <dt className="text-[var(--muted)]">Xác nhận lúc</dt>
+                        <dd className="text-right font-medium">
+                          {formatServiceDateTime(order.payment.paidAt)}
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                 </CardContent>
               </Card>

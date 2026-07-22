@@ -65,6 +65,21 @@ describe('order transition policy', () => {
     ).toEqual({ allowed: false, code: 'PAYMENT_NOT_READY' });
   });
 
+  it('requires a verified paid VNPay payment before confirmation', () => {
+    expect(
+      decide('confirm', {
+        paymentMethod: 'VNPAY',
+        paymentStatus: 'PROCESSING',
+      }),
+    ).toEqual({ allowed: false, code: 'PAYMENT_NOT_READY' });
+    expect(
+      decide('confirm', {
+        paymentMethod: 'VNPAY',
+        paymentStatus: 'PAID',
+      }),
+    ).toMatchObject({ allowed: true, next: 'CONFIRMED' });
+  });
+
   it('requires paid payment and no appointment for completion', () => {
     expect(
       decide('complete-without-installation', {

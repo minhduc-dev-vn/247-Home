@@ -17,9 +17,15 @@ export type OrderState =
   | 'COMPLETED'
   | 'CANCELLED';
 export type InventoryState = 'RESERVED' | 'CONSUMED' | 'RELEASED';
-export type PaymentMethodState = 'COD' | 'BANK_TRANSFER';
+export type PaymentMethodState = 'COD' | 'BANK_TRANSFER' | 'VNPAY';
 export type PaymentState =
-  'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
+  | 'CREATED'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'PAID'
+  | 'FAILED'
+  | 'REFUNDED'
+  | 'CANCELLED';
 
 export const orderActionLabels: Record<OrderAction, string> = {
   confirm: 'Xac nhan don',
@@ -125,7 +131,9 @@ export function decideOrderTransition(input: {
       (input.paymentStatus === 'PENDING' || input.paymentStatus === 'PAID');
     const validTransfer =
       input.paymentMethod === 'BANK_TRANSFER' && input.paymentStatus === 'PAID';
-    if (!validCod && !validTransfer)
+    const validOnline =
+      input.paymentMethod === 'VNPAY' && input.paymentStatus === 'PAID';
+    if (!validCod && !validTransfer && !validOnline)
       return { allowed: false, code: 'PAYMENT_NOT_READY' };
   }
 

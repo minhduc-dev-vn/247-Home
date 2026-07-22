@@ -16,6 +16,7 @@ describe('payment transition policy', () => {
         actor: manager,
         action: 'CONFIRM_PAYMENT',
         current: 'PENDING',
+        method: 'BANK_TRANSFER',
       }),
     ).toEqual({ allowed: true, current: 'PENDING', next: 'PAID' });
     expect(
@@ -23,6 +24,7 @@ describe('payment transition policy', () => {
         actor: manager,
         action: 'REJECT_PAYMENT',
         current: 'PENDING',
+        method: 'BANK_TRANSFER',
       }),
     ).toEqual({ allowed: true, current: 'PENDING', next: 'FAILED' });
     expect(
@@ -30,6 +32,7 @@ describe('payment transition policy', () => {
         actor: manager,
         action: 'CONFIRM_PAYMENT',
         current: 'PAID',
+        method: 'BANK_TRANSFER',
       }),
     ).toEqual({ allowed: false, code: 'INVALID_STATE_TRANSITION' });
   });
@@ -40,6 +43,18 @@ describe('payment transition policy', () => {
         actor: { ...manager, roles: ['CUSTOMER'] },
         action: 'CONFIRM_PAYMENT',
         current: 'PENDING',
+        method: 'BANK_TRANSFER',
+      }),
+    ).toEqual({ allowed: false, code: 'FORBIDDEN' });
+  });
+
+  it('does not allow staff to manually confirm an online payment', () => {
+    expect(
+      decidePaymentTransition({
+        actor: manager,
+        action: 'CONFIRM_PAYMENT',
+        current: 'PENDING',
+        method: 'VNPAY',
       }),
     ).toEqual({ allowed: false, code: 'FORBIDDEN' });
   });

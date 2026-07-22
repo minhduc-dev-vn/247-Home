@@ -55,6 +55,9 @@ export default async function CheckoutPage() {
             cart={cart}
             customer={{ email: profile.email, name: profile.name }}
             initialAddresses={addresses.items}
+            onlinePaymentEnabled={Boolean(
+              process.env.VNPAY_TMN_CODE && process.env.VNPAY_HASH_SECRET,
+            )}
           />
         </Container>
       </section>

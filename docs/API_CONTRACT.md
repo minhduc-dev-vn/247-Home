@@ -505,6 +505,34 @@ Body chung:
 
 Không có `PATCH status`. Route không tự định nghĩa transition; action, actor, current state, next state, payment guard và inventory guard đều do policy server-side duy nhất quyết định. Mutation dùng conditional write theo `id + expectedVersion + expected current status`; count khác `1` trả `409 CONCURRENT_MODIFICATION`.
 
+## Online payment (VNPay)
+
+| Method | Route | Access |
+| --- | --- | --- |
+| POST | `/api/v1/payment/create` | CUSTOMER owner; JSON; `Idempotency-Key` required |
+| GET | `/api/v1/payment/{id}` | CUSTOMER owner; private/no-store |
+| GET/POST | `/api/v1/payment/webhook` | VNPay signed callback; no browser session required |
+| GET | `/api/v1/payment/return` | Signed browser return; read/redirect only |
+
+Create input is `{ "orderId": "cuid", "paymentMethod": "VNPAY" }`. The
+server reads amount and currency from the owned order/payment. Success returns
+`paymentUrl`, `id`, `sessionId`, `status`, `amount`, `currency`, and
+`expiresAt`. A reused key with the same fingerprint returns the original
+session and `Idempotent-Replayed: true`; a different fingerprint returns
+`409 IDEMPOTENCY_CONFLICT`.
+
+The webhook verifies HMAC-SHA512, merchant, provider reference, amount,
+response code, and transaction status before mutation. A valid success changes
+payment to `PAID` and conditionally confirms a pending order in one transaction.
+A duplicate signed event is acknowledged without another version increment or
+audit event. Invalid signature is `403`; malformed payload is `400`; amount
+mismatch uses VNPay `RspCode=04`. Authenticated responses are
+`Cache-Control: private, no-store`.
+
+`POST /api/v1/payment/{id}/refund` is reserved. It is not active until refund
+authorization, partial-refund, accounting, and provider reconciliation rules
+are approved. Clients must not set `REFUNDED` directly.
+
 `mark-ready-for-installation` chuyển reservation `RESERVED -> CONSUMED`, giảm `inventory.onHand` và `inventory.reserved`, cập nhật order/version và ghi audit trong cùng transaction. Request retry bằng version cũ trả `409` và không consume/audit lần hai. `complete-without-installation` yêu cầu payment `PAID`, inventory `CONSUMED` và không có appointment.
 
 Response thành công chỉ trả DTO JSON-safe gồm `id`, `status`, `inventoryStatus`, `version` và các timestamp transition liên quan; không trả trực tiếp Prisma money `BigInt` hoặc payload order đầy đủ.

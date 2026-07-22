@@ -62,14 +62,31 @@ enum InventoryDisposition {
 enum PaymentMethod {
   COD
   BANK_TRANSFER
+  VNPAY
 }
 
 enum PaymentStatus {
+  CREATED
   PENDING
+  PROCESSING
   PAID
   FAILED
   REFUNDED
   CANCELLED
+}
+
+enum PaymentSessionStatus {
+  CREATED
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+enum PaymentWebhookOutcome {
+  PROCESSED
+  DUPLICATE
+  REJECTED
 }
 
 enum AppointmentStatus {
@@ -401,20 +418,74 @@ model InventoryAllocation {
 }
 
 model Payment {
-  id                    String        @id @default(cuid())
-  orderId               String        @unique @map("order_id")
+  id                    String                @id @default(cuid())
+  orderId               String                @unique @map("order_id")
   method                PaymentMethod
-  status                PaymentStatus @default(PENDING)
+  status                PaymentStatus         @default(PENDING)
   amount                BigInt
-  currency              String        @default("VND")
-  referenceCode         String        @unique @map("reference_code")
-  confirmationReference String?       @map("confirmation_reference")
-  createdAt             DateTime      @default(now()) @map("created_at")
-  updatedAt             DateTime      @updatedAt @map("updated_at")
-  version               Int           @default(1)
-  order                 Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  currency              String                @default("VND")
+  referenceCode         String                @unique @map("reference_code")
+  confirmationReference String?               @map("confirmation_reference")
+  providerTransactionId String?               @unique @map("provider_transaction_id")
+  providerResponseCode  String?               @map("provider_response_code")
+  paidAt                DateTime?             @map("paid_at")
+  failedAt              DateTime?             @map("failed_at")
+  cancelledAt           DateTime?             @map("cancelled_at")
+  refundedAt            DateTime?             @map("refunded_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  version               Int                   @default(1)
+  order                 Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sessions              PaymentSession[]
+  webhookEvents         PaymentWebhookEvent[]
 
   @@map("payments")
+}
+
+model PaymentSession {
+  id                 String                @id @default(cuid())
+  paymentId          String                @map("payment_id")
+  provider           PaymentMethod
+  status             PaymentSessionStatus  @default(CREATED)
+  providerReference  String                @unique @map("provider_reference")
+  idempotencyHash    String                @map("idempotency_hash")
+  requestFingerprint String                @map("request_fingerprint")
+  expiresAt          DateTime              @map("expires_at")
+  completedAt        DateTime?             @map("completed_at")
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+  payment            Payment               @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  webhookEvents      PaymentWebhookEvent[]
+
+  @@unique([paymentId, idempotencyHash])
+  @@index([paymentId, status, createdAt])
+  @@index([expiresAt, status])
+  @@map("payment_sessions")
+}
+
+model PaymentWebhookEvent {
+  id                    String                @id @default(cuid())
+  paymentId             String                @map("payment_id")
+  sessionId             String                @map("payment_session_id")
+  provider              PaymentMethod
+  eventKey              String                @unique @map("event_key")
+  providerTransactionId String?               @map("provider_transaction_id")
+  amount                BigInt
+  currency              String
+  responseCode          String                @map("response_code")
+  transactionStatus     String                @map("transaction_status")
+  payDate               DateTime?             @map("pay_date")
+  outcome               PaymentWebhookOutcome
+  requestId             String                @map("request_id")
+  receivedAt            DateTime              @default(now()) @map("received_at")
+  processedAt           DateTime?             @map("processed_at")
+  payment               Payment               @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  session               PaymentSession        @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([paymentId, receivedAt])
+  @@index([sessionId, receivedAt])
+  @@index([providerTransactionId])
+  @@map("payment_webhook_events")
 }
 
 model InstallationAppointment {

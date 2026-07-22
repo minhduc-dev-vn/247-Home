@@ -602,10 +602,13 @@ const orderSelect = {
   version: true,
   payment: {
     select: {
+      id: true,
       method: true,
       status: true,
       amount: true,
       referenceCode: true,
+      providerTransactionId: true,
+      paidAt: true,
     },
   },
   items: {
@@ -638,10 +641,13 @@ function orderDto(
     currency: order.currency,
     version: order.version,
     payment: {
+      id: order.payment?.id,
       method: order.payment?.method,
       status: order.payment?.status,
       amount: order.payment ? money(order.payment.amount) : null,
       referenceCode: order.payment?.referenceCode,
+      providerTransactionId: order.payment?.providerTransactionId,
+      paidAt: order.payment?.paidAt,
     },
     items: order.items.map((item) => ({
       id: item.id,
@@ -1006,6 +1012,7 @@ export async function transitionPayment(
       select: {
         id: true,
         orderId: true,
+        method: true,
         status: true,
         version: true,
         amount: true,
@@ -1021,6 +1028,7 @@ export async function transitionPayment(
       actor: operationsActor,
       action,
       current: payment.status,
+      method: payment.method,
     });
     if (!decision.allowed) throw new CatalogError(decision.code);
     if (
@@ -1081,7 +1089,7 @@ export async function getAvailablePaymentActions(
   const operationsActor = requireOrderOperationsActor(actor);
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    select: { id: true, version: true, status: true },
+    select: { id: true, version: true, status: true, method: true },
   });
   if (!payment) throw new CatalogError('NOT_FOUND');
 
@@ -1093,6 +1101,7 @@ export async function getAvailablePaymentActions(
         actor: operationsActor,
         action,
         current: payment.status,
+        method: payment.method,
       });
       return decision.allowed
         ? [{ action, label: paymentActionLabels[action] }]

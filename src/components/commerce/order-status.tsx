@@ -60,9 +60,19 @@ export const paymentStatusPresentation: Record<
   PaymentStatus,
   StatusPresentation
 > = {
+  CREATED: {
+    label: 'Đã tạo thanh toán',
+    description: 'Phiên thanh toán đang được chuẩn bị.',
+    variant: 'info',
+  },
   PENDING: {
     label: 'Chờ thanh toán',
     description: 'Thanh toán chưa được xác nhận.',
+    variant: 'warning',
+  },
+  PROCESSING: {
+    label: 'Đang thanh toán',
+    description: 'Cổng thanh toán đang xử lý giao dịch.',
     variant: 'warning',
   },
   PAID: {
@@ -146,6 +156,7 @@ export const appointmentStatusPresentation: Record<
 export const paymentMethodLabels: Record<PaymentMethod, string> = {
   BANK_TRANSFER: 'Chuyển khoản thủ công',
   COD: 'Thanh toán khi nhận hàng',
+  VNPAY: 'Thanh toán trực tuyến VNPay',
 };
 
 export function OrderStatusBadge({ status }: { status: OrderStatus }) {
