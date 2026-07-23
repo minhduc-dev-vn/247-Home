@@ -49,7 +49,7 @@ The following is derived from [ARCHITECTURE.md](./ARCHITECTURE.md),
 | Area | Current requirement | Deployment consequence |
 | --- | --- | --- |
 | Framework | Next.js 16 App Router, React 19, TypeScript strict | Run the standalone Node.js server as a long-lived HTTP container |
-| Runtime | Node.js 24, pnpm 10.32.1 at build/test time | Build once as OCI; runtime does not need pnpm or source checkout |
+| Runtime | Node.js 24, pnpm 11.16.0 at build/test time | Build once as OCI; runtime does not need pnpm or source checkout |
 | Application shape | Modular monolith; stateless request handlers; no microservices | One ECS service is sufficient; do not introduce Kubernetes or a service mesh |
 | Database | PostgreSQL 16 through Prisma; PostgreSQL-specific locks, constraints and transactions | Use managed PostgreSQL 16, never a compatibility layer or serverless non-PostgreSQL substitute |
 | Storage | Private S3-compatible evidence adapter; product image flow is currently local-only | Use native S3 for evidence; production product-image upload remains a launch gate |

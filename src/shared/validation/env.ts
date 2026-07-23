@@ -6,6 +6,8 @@ const serverEnvironmentSchema = z.object({
   NEXTAUTH_URL: z.string().url(),
   APP_ORIGIN: z.string().url().optional(),
   TRUST_PROXY_HEADERS: z.enum(['true', 'false']).default('false'),
+  TRUSTED_PROXY_PROVIDER: z.enum(['cloudfront']).optional(),
+  RATE_LIMIT_BACKEND: z.enum(['memory', 'waf']).default('memory'),
   AUTH_SECURE_COOKIES: z.enum(['true', 'false']).optional(),
 });
 
@@ -28,6 +30,8 @@ export function parseServerEnvironment(
     NEXTAUTH_URL: environment.NEXTAUTH_URL,
     APP_ORIGIN: environment.APP_ORIGIN,
     TRUST_PROXY_HEADERS: environment.TRUST_PROXY_HEADERS,
+    TRUSTED_PROXY_PROVIDER: environment.TRUSTED_PROXY_PROVIDER,
+    RATE_LIMIT_BACKEND: environment.RATE_LIMIT_BACKEND,
     AUTH_SECURE_COOKIES: environment.AUTH_SECURE_COOKIES,
   });
   const secureCookies =
@@ -43,6 +47,17 @@ export function parseServerEnvironment(
   )
     throw new Error(
       'Insecure Auth cookies are restricted to the loopback local demo runtime.',
+    );
+  if (
+    environment.NODE_ENV === 'production' &&
+    environment.NEXT_PHASE !== 'phase-production-build' &&
+    environment.LOCAL_DEMO !== 'true' &&
+    (parsed.RATE_LIMIT_BACKEND !== 'waf' ||
+      parsed.TRUST_PROXY_HEADERS !== 'true' ||
+      parsed.TRUSTED_PROXY_PROVIDER !== 'cloudfront')
+  )
+    throw new Error(
+      'Production requires the CloudFront/WAF trusted ingress contract.',
     );
   const { AUTH_SECURE_COOKIES: _rawSecureCookies, ...serverEnvironment } =
     parsed;

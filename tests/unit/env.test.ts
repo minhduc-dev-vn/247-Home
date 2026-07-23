@@ -18,6 +18,7 @@ describe('parseServerEnvironment', () => {
       NEXTAUTH_SECRET: 'test-only-secret-that-is-at-least-32-characters',
       NEXTAUTH_URL: 'http://localhost:3000',
       TRUST_PROXY_HEADERS: 'false',
+      RATE_LIMIT_BACKEND: 'memory',
       AUTH_SECURE_COOKIES: false,
     });
   });
@@ -45,6 +46,44 @@ describe('parseServerEnvironment', () => {
         AUTH_SECURE_COOKIES: 'false',
       }),
     ).toThrow('loopback local demo');
+  });
+
+  it('requires the CloudFront and WAF contract in production', () => {
+    const production = {
+      ...validEnvironment,
+      NEXTAUTH_URL: 'https://247home.example',
+      NODE_ENV: 'production',
+    };
+    expect(() => parseServerEnvironment(production)).toThrow(
+      'CloudFront/WAF trusted ingress',
+    );
+    expect(
+      parseServerEnvironment({
+        ...production,
+        TRUST_PROXY_HEADERS: 'true',
+        TRUSTED_PROXY_PROVIDER: 'cloudfront',
+        RATE_LIMIT_BACKEND: 'waf',
+      }),
+    ).toMatchObject({
+      TRUST_PROXY_HEADERS: 'true',
+      TRUSTED_PROXY_PROVIDER: 'cloudfront',
+      RATE_LIMIT_BACKEND: 'waf',
+      AUTH_SECURE_COOKIES: true,
+    });
+  });
+
+  it('allows build-time page analysis without weakening runtime checks', () => {
+    expect(
+      parseServerEnvironment({
+        ...validEnvironment,
+        NEXTAUTH_URL: 'https://build.example.test',
+        NODE_ENV: 'production',
+        NEXT_PHASE: 'phase-production-build',
+      }),
+    ).toMatchObject({
+      RATE_LIMIT_BACKEND: 'memory',
+      AUTH_SECURE_COOKIES: true,
+    });
   });
 
   it('rejects a missing database URL', () => {

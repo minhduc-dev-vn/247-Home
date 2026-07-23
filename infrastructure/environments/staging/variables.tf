@@ -28,6 +28,11 @@ variable "container_image" {
   description = "ECR image reference pinned by sha256 digest."
 }
 
+variable "migration_container_image" {
+  type        = string
+  description = "ECR migration image reference pinned by sha256 digest."
+}
+
 variable "alb_certificate_arn" {
   type        = string
   description = "Regional ACM certificate ARN for the ALB origin."
@@ -59,6 +64,23 @@ variable "ses_identity_arn" {
   description = "Verified SES identity ARN; no credential is stored in Terraform."
 }
 
+variable "vnpay_payment_url" {
+  type        = string
+  default     = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
+  description = "VNPay sandbox payment endpoint."
+}
+
+variable "vnpay_query_url" {
+  type        = string
+  default     = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction"
+  description = "VNPay sandbox QueryDR endpoint."
+}
+
+variable "vnpay_return_url" {
+  type        = string
+  description = "Canonical HTTPS VNPay browser return URL."
+}
+
 variable "alarm_email" {
   type        = string
   default     = null
@@ -70,6 +92,17 @@ variable "enable_ecs_service" {
   type        = bool
   default     = false
   description = "Enable only after secret versions and a real image digest exist."
+}
+
+variable "waf_rate_rule_action" {
+  type        = string
+  default     = "count"
+  description = "Use count for the staging soak, then block for release qualification."
+
+  validation {
+    condition     = contains(["count", "block"], var.waf_rate_rule_action)
+    error_message = "waf_rate_rule_action must be count or block."
+  }
 }
 
 variable "additional_tags" {

@@ -15,6 +15,7 @@ variable "availability_zones" { type = list(string) }
 variable "vpc_cidr" { type = string }
 variable "nat_gateway_mode" { type = string }
 variable "container_image" { type = string }
+variable "migration_container_image" { type = string }
 variable "container_port" {
   type    = number
   default = 3000
@@ -45,6 +46,7 @@ variable "cloudfront_price_class" { type = string }
 variable "waf_rate_rule_action" { type = string }
 variable "waf_baseline_rate_limit" { type = number }
 variable "waf_auth_rate_limit" { type = number }
+variable "waf_mutation_rate_limit" { type = number }
 variable "asset_bucket_name" { type = string }
 variable "asset_noncurrent_expiration_days" { type = number }
 variable "ecr_retain_tagged_images" { type = number }
@@ -59,6 +61,9 @@ variable "db_performance_insights_retention_days" { type = number }
 variable "log_retention_days" { type = number }
 variable "github_oidc_subjects" { type = list(string) }
 variable "ses_identity_arn" { type = string }
+variable "vnpay_payment_url" { type = string }
+variable "vnpay_query_url" { type = string }
+variable "vnpay_return_url" { type = string }
 variable "alarm_email" {
   type    = string
   default = null

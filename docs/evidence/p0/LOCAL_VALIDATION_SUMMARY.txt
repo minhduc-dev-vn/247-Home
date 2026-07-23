@@ -1,0 +1,50 @@
+247 Home P0 local validation summary
+Execution date: 2026-07-23
+Source base: f75cf64e369606cade4e81814e83e49df6336815
+Backup ref: backup/p0-remediation-20260723
+
+DEPENDENCIES
+pnpm: 11.16.0
+Next.js: 16.2.11
+sharp: 0.35.3 (single production version)
+production audit: PASS, 180 packages, no moderate-or-higher advisories
+
+APPLICATION GATES
+db:generate: PASS
+db:migrate: PASS, 15 migrations, no pending migration
+lint: PASS
+typecheck: PASS
+unit: PASS, 30 files / 107 tests
+integration: PASS, 10 files / 68 tests
+migration upgrade: PASS
+e2e: PASS, 47/47 tests
+build: PASS
+
+INFRASTRUCTURE GATES
+Terraform 1.15.8 fmt check: PASS
+Terraform staging validate: PASS (AWS provider 6.54.0)
+Terraform production validate: PASS (AWS provider 6.54.0)
+PowerShell parser checks: PASS
+Bash syntax checks: PASS
+
+LOCAL ARTIFACTS
+runtime image ID: sha256:67b98b610cc6f029211f8cb87b74501cb2f520e5d4d53d75dbcda7c9fc3ecc3d
+migration image ID: sha256:a05cd1c28ecbe60e50a66b7cfa66c8be007c3656ca794a77caeaa9ee5a2ddaa8
+runtime Trivy High/Critical: 0/0
+migration Trivy High/Critical: 0/0
+runtime SBOM SHA-256: 10213F5BAA154832E9E4F083D054EB137B1FB5DA08A6B95FF23CB5D67BC4DF7C
+migration SBOM SHA-256: 3A70B8B797D1ED469969D1606D7934D1D0403C2F4B2F677F353689E012804B81
+runtime health: HTTP 200
+Next image optimization: HTTP 200 image/png
+runtime identity: uid=1001(nextjs), gid=1001(nodejs)
+migration container: PASS, 15 migrations
+database invariants: PASS, all five violation counts are zero
+
+EXTERNAL BOUNDARY
+AWS CLI/credentials: unavailable
+VNPay merchant sandbox credentials: unavailable
+ECR publish/deploy digest: not executed
+public HTTPS/WAF multi-instance probe: not executed
+RDS restore and ECS rollback drill: not executed
+real VNPay transaction/reconciliation/alert verification: not executed
+No screenshots or external transaction IDs are claimed.

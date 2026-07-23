@@ -1,17 +1,13 @@
 import { consumeRateLimit } from '@/modules/identity/infrastructure/rate-limiter';
 import { processVnpayWebhook, type VnpayParameters } from '@/modules/payment';
+import { trustedClientAddress } from '@/shared/http/client-address';
 import { withApiHandler } from '@/shared/http/api-handler';
 import { createErrorResponse } from '@/shared/http/response';
 
 const maxWebhookBytes = 32 * 1024;
 
 function clientKey(request: Request): string {
-  if (process.env.TRUST_PROXY_HEADERS !== 'true') return 'untrusted-client';
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    request.headers.get('x-real-ip') ??
-    'unknown'
-  );
+  return trustedClientAddress(request);
 }
 
 function vnpayResponse(rspCode: string, message: string, requestId: string) {

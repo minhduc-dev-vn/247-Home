@@ -13,6 +13,7 @@ import {
   consumeRateLimit,
   type RateLimitAction,
 } from '@/modules/identity/infrastructure/rate-limiter';
+import { trustedClientAddress } from '@/shared/http/client-address';
 import { createErrorResponse, getRequestId } from '@/shared/http/response';
 import { logHttpRequest } from '@/shared/observability/logger';
 
@@ -72,13 +73,7 @@ function allowedMutationOrigins(): Set<string> {
 }
 
 function mutationClientKey(request: Request): string {
-  if (process.env.TRUST_PROXY_HEADERS !== 'true') return 'untrusted-client';
-  const forwarded = request.headers.get('x-forwarded-for');
-  return (
-    forwarded?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    'unknown'
-  );
+  return trustedClientAddress(request);
 }
 
 function requireMutationRequest(

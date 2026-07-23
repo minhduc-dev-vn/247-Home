@@ -106,7 +106,9 @@ module "ecs" {
   ecs_security_group_id          = module.security.ecs_security_group_id
   execution_role_arn             = module.iam.ecs_execution_role_arn
   task_role_arn                  = module.iam.ecs_application_role_arn
+  migration_role_arn             = module.iam.migration_role_arn
   container_image                = var.container_image
+  migration_container_image      = var.migration_container_image
   container_port                 = var.container_port
   cpu                            = var.ecs_cpu
   memory                         = var.ecs_memory
@@ -121,6 +123,9 @@ module "ecs" {
   secret_arns                    = module.secrets.secret_arns
   storage_bucket_name            = module.s3.bucket_name
   storage_region                 = var.aws_region
+  vnpay_payment_url              = var.vnpay_payment_url
+  vnpay_query_url                = var.vnpay_query_url
+  vnpay_return_url               = var.vnpay_return_url
   tags                           = local.tags
 
   depends_on = [module.monitoring_logs]
@@ -135,6 +140,7 @@ module "waf" {
   rate_rule_action    = var.waf_rate_rule_action
   baseline_rate_limit = var.waf_baseline_rate_limit
   auth_rate_limit     = var.waf_auth_rate_limit
+  mutation_rate_limit = var.waf_mutation_rate_limit
   log_retention_days  = var.log_retention_days
   logs_kms_key_arn    = null
   tags                = local.tags

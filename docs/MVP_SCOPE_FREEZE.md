@@ -1,5 +1,11 @@
 # 247 Home Staging MVP Scope Freeze
 
+> Historical decision notice (2026-07-23): this file preserves the scope frozen
+> on 2026-07-15. Customer Warranty and VNPay were implemented later and are
+> governed by their implementation records and
+> `P0_REMEDIATION_EVIDENCE.md`. VNPay remains disabled for production release
+> until external sandbox qualification and approval.
+
 Decision date: 2026-07-15  
 Decision: **Option A - freeze the implemented MVP for staging acceptance**
 

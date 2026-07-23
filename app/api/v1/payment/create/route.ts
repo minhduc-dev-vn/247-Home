@@ -3,6 +3,7 @@ import {
   paymentCreateSchema,
 } from '@/modules/payment';
 import { getCurrentActor } from '@/shared/auth/server';
+import { trustedClientAddress } from '@/shared/http/client-address';
 import { withJsonMutation } from '@/shared/http/api-handler';
 import {
   createErrorResponse,
@@ -12,12 +13,7 @@ import {
 const keyPattern = /^[A-Za-z0-9_-]{16,128}$/;
 
 function clientIp(request: Request): string {
-  if (process.env.TRUST_PROXY_HEADERS !== 'true') return '127.0.0.1';
-  return (
-    request.headers.get('x-forwarded-for') ??
-    request.headers.get('x-real-ip') ??
-    '127.0.0.1'
-  );
+  return trustedClientAddress(request, '127.0.0.1');
 }
 
 export async function POST(request: Request) {

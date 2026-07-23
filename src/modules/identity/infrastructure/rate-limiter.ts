@@ -55,10 +55,32 @@ const inMemoryRateLimiter: RateLimiter = {
   },
 };
 
-let activeRateLimiter: RateLimiter = inMemoryRateLimiter;
+const wafDelegatedRateLimiter: RateLimiter = {
+  consume() {
+    return { allowed: true, retryAfterSeconds: 0 };
+  },
+};
+
+let configuredRateLimiter: RateLimiter | undefined;
+
+function environmentRateLimiter(): RateLimiter {
+  if (process.env.RATE_LIMIT_BACKEND === 'waf') {
+    if (process.env.NODE_ENV !== 'production')
+      throw new Error('The WAF rate-limit backend is production-only.');
+    return wafDelegatedRateLimiter;
+  }
+  if (
+    process.env.NODE_ENV === 'production' &&
+    process.env.LOCAL_DEMO !== 'true'
+  )
+    throw new Error(
+      'Production requires RATE_LIMIT_BACKEND=waf at the trusted edge.',
+    );
+  return inMemoryRateLimiter;
+}
 
 export function configureRateLimiter(rateLimiter: RateLimiter): void {
-  activeRateLimiter = rateLimiter;
+  configuredRateLimiter = rateLimiter;
 }
 
 export function consumeRateLimit(
@@ -66,7 +88,7 @@ export function consumeRateLimit(
   key: string,
   now = Date.now(),
 ): { allowed: boolean; retryAfterSeconds: number } {
-  return activeRateLimiter.consume(
+  return (configuredRateLimiter ?? environmentRateLimiter()).consume(
     action,
     key,
     policies[action] ?? policies['sensitive-mutation'],
@@ -76,5 +98,5 @@ export function consumeRateLimit(
 
 export function clearRateLimitsForTest(): void {
   attempts.clear();
-  activeRateLimiter = inMemoryRateLimiter;
+  configuredRateLimiter = undefined;
 }

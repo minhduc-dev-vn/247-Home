@@ -2,10 +2,10 @@
   "name": "247-home",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@11.16.0",
   "engines": {
     "node": ">=22.0.0",
-    "pnpm": ">=10.0.0"
+    "pnpm": ">=11.0.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -23,6 +23,10 @@
     "test:e2e:staging": "playwright test --config=playwright.staging.config.ts",
     "test:storage-server": "tsx tests/support/s3-compatible-test-server.ts",
     "audit:prod": "tsx scripts/audit-production-dependencies.ts",
+    "verify:staging-rate-limit": "tsx scripts/verify-staging-rate-limit.ts",
+    "verify:vnpay-config": "tsx scripts/verify-vnpay-configuration.ts",
+    "payment:reconcile": "tsx scripts/payment-reconciliation-report.ts",
+    "verify:database-invariants": "tsx scripts/verify-database-invariants.ts",
     "cleanup:operations-fixtures": "tsx scripts/cleanup-operations-fixtures.ts",
     "screenshots:animation": "tsx scripts/capture-animation-screenshots.ts",
     "demo:bootstrap": "tsx scripts/demo-bootstrap.ts",
@@ -43,20 +47,6 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
-  "pnpm": {
-    "overrides": {
-      "postcss": "8.5.18",
-      "uuid": "11.1.1"
-    },
-    "onlyBuiltDependencies": [
-      "@prisma/client",
-      "@prisma/engines",
-      "esbuild",
-      "prisma",
-      "sharp",
-      "unrs-resolver"
-    ]
-  },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1087.0",
     "@aws-sdk/s3-request-presigner": "3.1087.0",
@@ -66,7 +56,7 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "lucide-react": "0.562.0",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "next-auth": "4.24.14",
     "react": "19.2.7",
     "react-dom": "19.2.7",
@@ -82,7 +72,7 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "eslint": "9.39.1",
-    "eslint-config-next": "16.2.10",
+    "eslint-config-next": "16.2.11",
     "prettier": "3.9.5",
     "prettier-plugin-tailwindcss": "0.8.0",
     "prisma": "6.19.3",

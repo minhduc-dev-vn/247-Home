@@ -10,13 +10,13 @@ ENV COREPACK_HOME=/corepack \
 RUN apk upgrade --no-cache \
     && mkdir -p "$COREPACK_HOME" \
     && corepack enable \
-    && corepack prepare pnpm@10.32.1 --activate \
+    && corepack prepare pnpm@11.16.0 --activate \
     && chmod -R a+rX "$COREPACK_HOME"
 WORKDIR /app
 
 FROM base AS dependencies
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
@@ -30,11 +30,29 @@ ENV APP_VERSION=$APP_VERSION \
     DATABASE_URL=postgresql://build-only:build-only@127.0.0.1:5432/build-only \
     GIT_SHA=$GIT_SHA \
     NEXTAUTH_SECRET=build-only-placeholder-not-a-runtime-secret \
-    NEXTAUTH_URL=https://build.invalid
+    NEXTAUTH_URL=https://build.invalid \
+    RATE_LIMIT_BACKEND=waf \
+    TRUSTED_PROXY_PROVIDER=cloudfront \
+    TRUST_PROXY_HEADERS=true
 
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN pnpm db:generate && pnpm build
+
+FROM dependencies AS migration
+
+ENV NODE_ENV=production
+
+COPY --chown=node:node tsconfig.json ./
+COPY --chown=node:node prisma ./prisma
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node src ./src
+RUN node node_modules/prisma/build/index.js generate \
+    && rm -rf /corepack /pnpm /usr/local/lib/node_modules /opt/yarn-v1.22.22 \
+    && rm -f /usr/local/bin/corepack /usr/local/bin/npm /usr/local/bin/npx \
+      /usr/local/bin/pnpm /usr/local/bin/pnpx /usr/local/bin/yarn /usr/local/bin/yarnpkg
+USER node
+CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
 FROM dependencies AS demo-tools
 

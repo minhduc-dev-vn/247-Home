@@ -1,5 +1,13 @@
 # 247 Home
 
+> Release update (2026-07-23): the repository now includes Customer Warranty
+> and VNPay integration code added after the 2026-07-15 MVP freeze. VNPay is
+> **not approved for production** until real sandbox qualification, reconciliation
+> alert verification, and Finance/Security approval are complete. Production
+> uses AWS WAF as the shared rate limiter; local/test retain the in-memory
+> adapter. Current P0 status and evidence are tracked in
+> [`docs/P0_REMEDIATION_EVIDENCE.md`](docs/P0_REMEDIATION_EVIDENCE.md).
+
 Ứng dụng thương mại điện tử bán thiết bị nhà thông minh và an ninh gia đình kèm dịch vụ lắp đặt tận nơi.
 
 > Trạng thái: **staging release candidate**. Phạm vi acceptance đã được freeze

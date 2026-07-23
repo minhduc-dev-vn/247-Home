@@ -7,7 +7,7 @@ Scope: local machine only
 
 - Windows 10/11 with Docker Desktop and Docker Compose v2.
 - At least 6 GB free RAM and 8 GB free disk for images and persistent volumes.
-- Node.js 24 and pnpm 10.32.1 for quality gates and helper commands.
+- Node.js 24 and pnpm 11.16.0 for quality gates and helper commands.
 - Ports `3000`, `5433`, `9000` and `9001` available on loopback.
 - No AWS account or cloud credential.
 

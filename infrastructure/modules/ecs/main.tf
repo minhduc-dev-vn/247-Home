@@ -174,6 +174,60 @@ resource "aws_ecs_task_definition" "this" {
   tags = var.tags
 }
 
+resource "aws_ecs_task_definition" "migration" {
+  family                   = local.migration_task_family
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = var.migration_role_arn
+  task_role_arn            = var.migration_role_arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  volume {
+    name = "tmp"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name                   = "migration"
+      image                  = var.migration_container_image
+      essential              = true
+      user                   = "1000:1000"
+      readonlyRootFilesystem = true
+      environment = [
+        { name = "NODE_ENV", value = "production" },
+      ]
+      secrets = local.migration_secrets
+      mountPoints = [{
+        sourceVolume  = "tmp"
+        containerPath = "/tmp"
+        readOnly      = false
+      }]
+      linuxParameters = {
+        initProcessEnabled = true
+        capabilities = {
+          drop = ["ALL"]
+        }
+      }
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = var.application_log_group_name
+          awslogs-region        = var.storage_region
+          awslogs-stream-prefix = "migration"
+        }
+      }
+    }
+  ])
+
+  tags = var.tags
+}
+
 resource "aws_ecs_service" "this" {
   count = var.enable_service ? 1 : 0
 
