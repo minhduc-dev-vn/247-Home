@@ -8,6 +8,13 @@ No VNPay sandbox merchant credentials or registered public callback URL were
 available in the execution environment on 2026-07-23. No transaction ID,
 screenshot, webhook, reconciliation result, or approval is claimed.
 
+The current release candidate is `v0.1.0-staging-p0.1` at
+`c34063603191a17492dd0684b22a563c3d9759cb`. Its quality job passed the local
+signed payment, webhook, idempotency and QueryDR tests, but no `VNPAY_*`
+configuration or deployed HTTPS callback was present for a real provider
+transaction. See
+`docs/evidence/p0/STAGING_EXECUTION_ATTEMPT_20260723.txt`.
+
 ## Repository Evidence
 
 - Signed IPN/return handling and idempotency tests remain in the payment suite.

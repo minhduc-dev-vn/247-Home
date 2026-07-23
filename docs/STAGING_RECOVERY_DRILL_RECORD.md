@@ -9,6 +9,15 @@ access and an approved maintenance window were not available on 2026-07-23.
 Therefore no RDS restore, ECS rollback, HTTPS, Secrets Manager, S3 lifecycle, or
 alarm-delivery claim is made.
 
+The immutable staging tag `v0.1.0-staging-p0.1` was exercised in GitHub Actions
+run
+[`30017223927`](https://github.com/minhduc-dev-vn/247-Home/actions/runs/30017223927).
+Its complete quality job passed, then the artifact job stopped at the reviewed
+AWS binding preflight because `AWS_REGION`, `AWS_ROLE_ARN`, and
+`ECR_REPOSITORY_URL` were not configured. The deployment and recovery jobs
+therefore made no AWS API calls. The redacted execution record is
+`docs/evidence/p0/STAGING_EXECUTION_ATTEMPT_20260723.txt`.
+
 ## Prepared Controls
 
 - `scripts/create-rds-pre-migration-snapshot.ps1` creates and waits for a
