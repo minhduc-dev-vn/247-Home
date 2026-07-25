@@ -63,6 +63,18 @@ const wafDelegatedRateLimiter: RateLimiter = {
 
 let configuredRateLimiter: RateLimiter | undefined;
 
+function isRenderSingleInstanceStaging(): boolean {
+  return (
+    process.env.NODE_ENV === 'production' &&
+    process.env.RENDER === 'true' &&
+    process.env.DEPLOYMENT_ENV === 'staging' &&
+    process.env.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
+    process.env.RATE_LIMIT_BACKEND === 'memory' &&
+    process.env.TRUST_PROXY_HEADERS === 'true' &&
+    process.env.TRUSTED_PROXY_PROVIDER === 'render'
+  );
+}
+
 function environmentRateLimiter(): RateLimiter {
   if (process.env.RATE_LIMIT_BACKEND === 'waf') {
     if (process.env.NODE_ENV !== 'production')
@@ -71,7 +83,8 @@ function environmentRateLimiter(): RateLimiter {
   }
   if (
     process.env.NODE_ENV === 'production' &&
-    process.env.LOCAL_DEMO !== 'true'
+    process.env.LOCAL_DEMO !== 'true' &&
+    !isRenderSingleInstanceStaging()
   )
     throw new Error(
       'Production requires RATE_LIMIT_BACKEND=waf at the trusted edge.',

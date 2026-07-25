@@ -23,6 +23,27 @@ TRUSTED_PROXY_PROVIDER=cloudfront
 CloudFront must overwrite `x-247-client-address`; clients cannot supply its
 effective value. Direct origin access must be denied.
 
+### Render One-Instance Staging Exception
+
+A public Render staging service is not an AWS staging task and cannot claim the
+CloudFront/WAF contract. It may use the application's in-memory adapter only
+when all of the following are true:
+
+```text
+RENDER=true                         # supplied by Render
+DEPLOYMENT_ENV=staging
+RENDER_STAGING_SINGLE_INSTANCE=true
+RATE_LIMIT_BACKEND=memory
+TRUST_PROXY_HEADERS=true
+TRUSTED_PROXY_PROVIDER=render
+```
+
+The runtime rejects partial configuration. Keep the service at exactly one
+instance with autoscaling disabled. Render documents `X-Forwarded-For` as the
+client-IP source for its web services; this provider is accepted only in the
+explicit Render staging profile. It is not permitted for AWS staging or any
+production deployment. See `docs/RENDER_STAGING_RUNBOOK.md`.
+
 ## Validation
 
 1. Apply reviewed Terraform with staging rules initially in count mode.

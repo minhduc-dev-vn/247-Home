@@ -72,6 +72,38 @@ describe('parseServerEnvironment', () => {
     });
   });
 
+  it('allows only the explicit Render single-instance staging contract', () => {
+    const staging = {
+      ...validEnvironment,
+      NEXTAUTH_URL: 'https://247-home-staging.onrender.com',
+      APP_ORIGIN: 'https://247-home-staging.onrender.com',
+      NODE_ENV: 'production',
+      RENDER: 'true',
+      DEPLOYMENT_ENV: 'staging',
+      RENDER_STAGING_SINGLE_INSTANCE: 'true',
+      TRUST_PROXY_HEADERS: 'true',
+      TRUSTED_PROXY_PROVIDER: 'render',
+      RATE_LIMIT_BACKEND: 'memory',
+    };
+
+    expect(parseServerEnvironment(staging)).toMatchObject({
+      DEPLOYMENT_ENV: 'staging',
+      RENDER_STAGING_SINGLE_INSTANCE: 'true',
+      TRUSTED_PROXY_PROVIDER: 'render',
+      RATE_LIMIT_BACKEND: 'memory',
+      AUTH_SECURE_COOKIES: true,
+    });
+    expect(() =>
+      parseServerEnvironment({
+        ...staging,
+        RENDER_STAGING_SINGLE_INSTANCE: undefined,
+      }),
+    ).toThrow('trusted ingress contract');
+    expect(() =>
+      parseServerEnvironment({ ...staging, RENDER: undefined }),
+    ).toThrow('trusted ingress contract');
+  });
+
   it('allows build-time page analysis without weakening runtime checks', () => {
     expect(
       parseServerEnvironment({
