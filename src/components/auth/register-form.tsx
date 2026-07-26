@@ -13,6 +13,17 @@ import { Input } from '@/components/ui/input';
 import { registrationSchema } from '@/modules/identity/presentation/schemas';
 
 type RegistrationFormValues = { name: string; email: string; password: string };
+type RegistrationErrorPayload = { error?: { code?: string } };
+
+function registrationErrorMessage(code: string | undefined): string {
+  if (code === 'RATE_LIMITED')
+    return 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.';
+  if (code === 'FORBIDDEN')
+    return 'Không thể xác minh địa chỉ trang đăng ký. Vui lòng tải lại trang.';
+  if (code === 'VALIDATION_ERROR')
+    return 'Không thể sử dụng thông tin đăng ký này. Hãy đăng nhập hoặc khôi phục mật khẩu nếu bạn đã có tài khoản.';
+  return 'Hệ thống chưa thể tạo tài khoản. Vui lòng thử lại sau.';
+}
 
 export function RegisterForm() {
   const router = useRouter();
@@ -24,26 +35,35 @@ export function RegisterForm() {
 
   async function onSubmit(values: RegistrationFormValues) {
     setMessage(null);
-    const response = await fetch('/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
-    });
-    if (!response.ok) {
-      setMessage('Không thể tạo tài khoản. Vui lòng kiểm tra lại thông tin.');
-      return;
+    try {
+      const response = await fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      if (!response.ok) {
+        const payload = (await response
+          .json()
+          .catch(() => null)) as RegistrationErrorPayload | null;
+        setMessage(registrationErrorMessage(payload?.error?.code));
+        return;
+      }
+      const result = await signIn('credentials', {
+        email: values.email,
+        password: values.password,
+        redirect: false,
+      });
+      if (result?.error) {
+        router.push('/login');
+        return;
+      }
+      router.push('/account');
+      router.refresh();
+    } catch {
+      setMessage(
+        'Không thể kết nối tới hệ thống. Vui lòng kiểm tra mạng và thử lại.',
+      );
     }
-    const result = await signIn('credentials', {
-      email: values.email,
-      password: values.password,
-      redirect: false,
-    });
-    if (result?.error) {
-      router.push('/login');
-      return;
-    }
-    router.push('/account');
-    router.refresh();
   }
 
   const fields = [

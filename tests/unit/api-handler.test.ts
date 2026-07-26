@@ -202,4 +202,40 @@ describe('shared sensitive mutation security contract', () => {
       error: { code: 'PAYLOAD_TOO_LARGE' },
     });
   });
+
+  it('accepts the external Render service origin supplied by the platform', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RENDER', 'true');
+    vi.stubEnv('RENDER_EXTERNAL_URL', 'https://247-home-staging.onrender.com');
+    vi.stubEnv('NEXTAUTH_URL', 'https://247home.example');
+    vi.stubEnv('APP_ORIGIN', 'https://247home.example');
+    vi.stubEnv('DEPLOYMENT_ENV', 'staging');
+    vi.stubEnv('RENDER_STAGING_SINGLE_INSTANCE', 'true');
+    vi.stubEnv('RATE_LIMIT_BACKEND', 'memory');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'true');
+    vi.stubEnv('TRUSTED_PROXY_PROVIDER', 'render');
+    try {
+      const action = vi.fn(async () => Response.json({ data: {} }));
+      const response = await withJsonMutation(
+        new Request('https://247-home-staging.onrender.com/api/test', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://247-home-staging.onrender.com',
+            'X-Forwarded-For': '203.0.113.20',
+          },
+          body: JSON.stringify({ value: 'ok' }),
+        }),
+        schema,
+        { rateLimitScope: 'render-origin-test' },
+        action,
+      );
+
+      expect(response.status).toBe(200);
+      expect(action).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllEnvs();
+      clearRateLimitsForTest();
+    }
+  });
 });

@@ -717,7 +717,7 @@ Không dùng message để client quyết định logic; dùng `code`.
 
 - Response auth-sensitive: `Cache-Control: private, no-store`.
 - Catalog public có thể cache server-side; không cache availability làm cam kết.
-- Operations mutation kiểm `Origin` theo `NEXTAUTH_URL`/`APP_ORIGIN`; development/test chỉ allow `http://localhost:3000` và `http://127.0.0.1:3000`.
+- Mutation kiểm `Origin` theo `NEXTAUTH_URL`/`APP_ORIGIN`; trên Render, URL do nền tảng cung cấp qua `RENDER_EXTERNAL_URL` cũng được phép khi `RENDER=true`. Development/test chỉ allow `http://localhost:3000` và `http://127.0.0.1:3000`.
 - Operations mutation chỉ nhận `application/json`. Body JSON action mặc định tối đa 64 KiB; endpoint evidence dùng JSON base64 tối đa 8 MiB, trong đó decoded image tối đa 5 MiB.
 - Storage validation failure trả `400 VALIDATION_ERROR`; provider/config outage
   trả `503 STORAGE_UNAVAILABLE` với message generic, không lộ endpoint hay

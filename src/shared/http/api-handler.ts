@@ -65,6 +65,10 @@ function allowedMutationOrigins(): Set<string> {
     const origin = parseConfiguredOrigin(value);
     if (origin) origins.add(origin);
   }
+  if (process.env.RENDER === 'true') {
+    const renderOrigin = parseConfiguredOrigin(process.env.RENDER_EXTERNAL_URL);
+    if (renderOrigin) origins.add(renderOrigin);
+  }
   if (process.env.NODE_ENV !== 'production') {
     origins.add('http://localhost:3000');
     origins.add('http://127.0.0.1:3000');
