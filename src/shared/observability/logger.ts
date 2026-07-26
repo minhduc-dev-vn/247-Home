@@ -6,8 +6,15 @@ export type HttpRequestLog = {
   durationMs: number;
 };
 
+export type ApplicationErrorLog = {
+  requestId: string;
+  route: string;
+  category: string;
+  errorCode: string;
+};
+
 export interface StructuredLogger {
-  info(event: string, fields: HttpRequestLog): void;
+  info(event: string, fields: HttpRequestLog | ApplicationErrorLog): void;
 }
 
 const stdoutLogger: StructuredLogger = {
@@ -31,4 +38,8 @@ export function resetStructuredLoggerForTest(): void {
 
 export function logHttpRequest(fields: HttpRequestLog): void {
   activeLogger.info('http.request.completed', fields);
+}
+
+export function logApplicationError(fields: ApplicationErrorLog): void {
+  activeLogger.info('application.error', fields);
 }

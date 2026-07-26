@@ -18,23 +18,28 @@ export function findUserById(id: string): Promise<UserWithRoles | null> {
   return prisma.user.findUnique({ where: { id }, include: userWithRoles });
 }
 
-export function findRoleByCode(code: RoleCode) {
-  return prisma.role.findUnique({ where: { code } });
-}
-
 export function createCustomer(input: {
   name: string;
   email: string;
   passwordHash: string;
-  customerRoleId: string;
 }) {
-  return prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      passwordHash: input.passwordHash,
-      roles: { create: { roleId: input.customerRoleId } },
-    },
-    include: userWithRoles,
+  return prisma.$transaction(async (transaction) => {
+    await transaction.role.createMany({
+      data: [{ code: RoleCode.CUSTOMER }],
+      skipDuplicates: true,
+    });
+    const customerRole = await transaction.role.findUniqueOrThrow({
+      where: { code: RoleCode.CUSTOMER },
+    });
+
+    return transaction.user.create({
+      data: {
+        name: input.name,
+        email: input.email,
+        passwordHash: input.passwordHash,
+        roles: { create: { roleId: customerRole.id } },
+      },
+      include: userWithRoles,
+    });
   });
 }

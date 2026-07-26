@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { withApiHandler } from '@/shared/http/api-handler';
 import {
   configureStructuredLogger,
+  logApplicationError,
   resetStructuredLoggerForTest,
   type StructuredLogger,
 } from '@/shared/observability/logger';
@@ -31,5 +32,25 @@ describe('structured HTTP logging', () => {
       }),
     );
     expect(JSON.stringify(info.mock.calls)).not.toContain('secret');
+  });
+
+  it('emits safe application error metadata without request payloads', () => {
+    const info = vi.fn<StructuredLogger['info']>();
+    configureStructuredLogger({ info });
+
+    logApplicationError({
+      requestId: 'request-500',
+      route: '/api/v1/auth/register',
+      category: 'customer-registration',
+      errorCode: 'PrismaClientInitializationError',
+    });
+
+    expect(info).toHaveBeenCalledWith('application.error', {
+      requestId: 'request-500',
+      route: '/api/v1/auth/register',
+      category: 'customer-registration',
+      errorCode: 'PrismaClientInitializationError',
+    });
+    expect(JSON.stringify(info.mock.calls)).not.toContain('password');
   });
 });

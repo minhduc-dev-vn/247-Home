@@ -120,6 +120,37 @@ describe('identity persistence and authorization', () => {
     ).resolves.toMatchObject({ roles: ['CUSTOMER'] });
   });
 
+  it('handles concurrent customer registrations without duplicating the system role', async () => {
+    const emails = [nextEmail(), nextEmail()];
+    const responses = await Promise.all(
+      emails.map((email, index) =>
+        registerPost(
+          new Request('http://localhost:3000/api/v1/auth/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: 'http://localhost:3000',
+              'x-forwarded-for': `198.51.100.${index + 10}`,
+            },
+            body: JSON.stringify({
+              name: `Concurrent Customer ${index + 1}`,
+              email,
+              password: 'ConcurrentRegistrationPassword-247',
+            }),
+          }),
+        ),
+      ),
+    );
+
+    expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+    await expect(
+      prisma.role.count({ where: { code: 'CUSTOMER' } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.user.count({ where: { email: { in: emails } } }),
+    ).resolves.toBe(2);
+  });
+
   it('does not return another customer profile', async () => {
     const first = await createCustomer();
     const second = await createCustomer();
