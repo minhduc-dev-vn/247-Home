@@ -22,18 +22,26 @@ staging profile accepts that header only when `RENDER=true` and
 
 ## Render Service Settings
 
-Create a **Web Service**, not a static site.
+Create a **Web Service**, not a static site. The current deployment artifact is
+the repository `Dockerfile`.
 
 | Setting | Value |
 | --- | --- |
-| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm db:generate && pnpm build` |
-| Pre-deploy command | `pnpm db:migrate` |
-| Start command | `pnpm start` |
+| Language | `Docker` |
+| Dockerfile path | `./Dockerfile` |
+| Docker command | Leave blank to use the image `CMD` |
 | Health check path | `/api/health` |
 | Instances | Exactly one; disable autoscaling |
 
-Do not define `PORT`. Render supplies it (normally `10000`); `5432` belongs
-only inside the PostgreSQL connection URL.
+Set `PORT=10000`, or remove a manually configured `PORT` and allow Render to
+supply its default. Never set it to `5432`; that port belongs only inside the
+PostgreSQL connection URL. The Docker health check reads the runtime `PORT`.
+
+The runtime image deliberately excludes migration tooling. Run
+`pnpm db:migrate` from a trusted operator environment against the intended
+staging database before deploying an application revision. Do not place a
+non-functional `pnpm db:migrate` command in the Docker service's pre-deploy
+field.
 
 ## Required Environment Variables
 
@@ -50,11 +58,24 @@ RENDER_STAGING_SINGLE_INSTANCE=true
 TRUST_PROXY_HEADERS=true
 TRUSTED_PROXY_PROVIDER=render
 RATE_LIMIT_BACKEND=memory
+PORT=10000
 ```
 
 `RENDER=true` is supplied by Render and must not be set locally to bypass this
 profile. If a custom domain is used, replace both URL values with that single
 canonical HTTPS origin before testing registration.
+
+The non-secret variables are also available in
+`render.staging.env.example`. In **Environment**, use **Add from .env** to
+import that file's contents, then add `DATABASE_URL`, `NEXTAUTH_SECRET`,
+`NEXTAUTH_URL`, and `APP_ORIGIN` separately. Choose **Save, rebuild, and
+deploy**. Existing dashboard variables override imported or Blueprint values,
+so remove stale values such as `PORT=3000`,
+`TRUSTED_PROXY_PROVIDER=cloudfront`, or `RATE_LIMIT_BACKEND=waf`.
+
+If deployment fails with `Invalid Render staging contract`, the log now lists
+every missing or incorrect non-secret setting. Correct those exact values
+instead of disabling runtime validation.
 
 ## Database and Demo Data
 

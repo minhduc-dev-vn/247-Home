@@ -98,10 +98,23 @@ describe('parseServerEnvironment', () => {
         ...staging,
         RENDER_STAGING_SINGLE_INSTANCE: undefined,
       }),
-    ).toThrow('trusted ingress contract');
+    ).toThrow('RENDER_STAGING_SINGLE_INSTANCE=true');
     expect(() =>
       parseServerEnvironment({ ...staging, RENDER: undefined }),
     ).toThrow('trusted ingress contract');
+  });
+
+  it('reports every invalid Render staging setting without exposing secrets', () => {
+    expect(() =>
+      parseServerEnvironment({
+        ...validEnvironment,
+        NEXTAUTH_URL: 'https://247-home-staging.onrender.com',
+        NODE_ENV: 'production',
+        RENDER: 'true',
+      }),
+    ).toThrow(
+      'DEPLOYMENT_ENV=staging, RENDER_STAGING_SINGLE_INSTANCE=true, TRUST_PROXY_HEADERS=true, TRUSTED_PROXY_PROVIDER=render',
+    );
   });
 
   it('allows build-time page analysis without weakening runtime checks', () => {

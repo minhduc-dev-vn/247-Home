@@ -23,6 +23,37 @@ function isLoopbackUrl(value: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function getRenderStagingContractIssues(
+  environment: Record<string, string | undefined>,
+  parsed: z.infer<typeof serverEnvironmentSchema>,
+): string[] {
+  const issues: string[] = [];
+  const requireValue = (
+    key: string,
+    actual: string | undefined,
+    expected: string,
+  ) => {
+    if (actual !== expected) issues.push(`${key}=${expected}`);
+  };
+
+  requireValue('RENDER', environment.RENDER, 'true (set automatically)');
+  requireValue('DEPLOYMENT_ENV', parsed.DEPLOYMENT_ENV, 'staging');
+  requireValue(
+    'RENDER_STAGING_SINGLE_INSTANCE',
+    parsed.RENDER_STAGING_SINGLE_INSTANCE,
+    'true',
+  );
+  requireValue('RATE_LIMIT_BACKEND', parsed.RATE_LIMIT_BACKEND, 'memory');
+  requireValue('TRUST_PROXY_HEADERS', parsed.TRUST_PROXY_HEADERS, 'true');
+  requireValue(
+    'TRUSTED_PROXY_PROVIDER',
+    parsed.TRUSTED_PROXY_PROVIDER,
+    'render',
+  );
+
+  return issues;
+}
+
 export function parseServerEnvironment(
   environment: Record<string, string | undefined>,
 ): ServerEnvironment {
@@ -69,10 +100,17 @@ export function parseServerEnvironment(
     environment.LOCAL_DEMO !== 'true' &&
     !cloudFrontWafContract &&
     !renderSingleInstanceStagingContract
-  )
+  ) {
+    if (environment.RENDER === 'true') {
+      const issues = getRenderStagingContractIssues(environment, parsed);
+      throw new Error(
+        `Invalid Render staging contract. Set or correct: ${issues.join(', ')}. See docs/RENDER_STAGING_RUNBOOK.md.`,
+      );
+    }
     throw new Error(
       'Production requires the CloudFront/WAF trusted ingress contract or the explicit single-instance Render staging contract.',
     );
+  }
   const { AUTH_SECURE_COOKIES: _rawSecureCookies, ...serverEnvironment } =
     parsed;
   return { ...serverEnvironment, AUTH_SECURE_COOKIES: secureCookies };
