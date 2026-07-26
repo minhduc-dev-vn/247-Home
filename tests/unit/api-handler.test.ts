@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { CatalogError } from '@/modules/catalog';
+import { StorageProviderError } from '@/modules/storage';
 import {
   withApiHandler,
   withJsonMutation,
@@ -9,6 +10,12 @@ import {
   withOperationsJsonMutation,
 } from '@/shared/http/api-handler';
 import { clearRateLimitsForTest } from '@/modules/identity/infrastructure/rate-limiter';
+import {
+  configureStructuredLogger,
+  resetStructuredLoggerForTest,
+  type ApplicationErrorLog,
+  type StructuredLogger,
+} from '@/shared/observability/logger';
 
 describe('API conflict responses', () => {
   it.each([
@@ -29,9 +36,165 @@ describe('API conflict responses', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code,
-        requestId: 'order-transition-test',
+        requestId: expect.stringMatching(/^req_/),
       },
     });
+  });
+});
+
+describe('server failure diagnostics', () => {
+  afterEach(() => resetStructuredLoggerForTest());
+
+  function captureLogs() {
+    const info = vi.fn<StructuredLogger['info']>();
+    const warn = vi.fn<StructuredLogger['warn']>();
+    const error = vi.fn<StructuredLogger['error']>();
+    configureStructuredLogger({ info, warn, error });
+    return {
+      applicationError: () =>
+        error.mock.calls.find(
+          ([event]) => event === 'application.error',
+        )?.[1] as ApplicationErrorLog | undefined,
+      requestLogs: () =>
+        info.mock.calls.filter(([event]) => event === 'http.request.completed'),
+    };
+  }
+
+  it('logs the stack of an unexpected error without leaking it to the client', async () => {
+    const logs = captureLogs();
+
+    const response = await withApiHandler(
+      new Request('http://localhost/api/test', {
+        headers: { 'x-request-id': 'client-supplied' },
+      }),
+      async () => {
+        throw new Error('database connection lost');
+      },
+    );
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toEqual({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Không thể xử lý yêu cầu lúc này.',
+        fieldErrors: {},
+        details: {},
+        requestId: expect.stringMatching(/^req_/),
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('database connection lost');
+    expect(JSON.stringify(body)).not.toContain('at ');
+
+    const logged = logs.applicationError();
+    expect(logged).toMatchObject({
+      route: '/api/test',
+      category: 'unhandled-exception',
+      errorCode: 'Error',
+      errorMessage: 'database connection lost',
+      clientRequestId: 'client-supplied',
+    });
+    expect(logged?.stack).toMatch(/at .+/);
+    expect(logged?.requestId).toMatch(/^req_/);
+  });
+
+  it('logs a storage outage before returning the generic 503 envelope', async () => {
+    const logs = captureLogs();
+
+    const response = await withApiHandler(
+      new Request('http://localhost/api/evidence'),
+      async () => {
+        throw new StorageProviderError('bucket 247-evidence unreachable');
+      },
+    );
+
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: {
+        code: 'STORAGE_UNAVAILABLE',
+        message: 'Không thể xử lý tệp lúc này.',
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('247-evidence');
+
+    expect(logs.applicationError()).toMatchObject({
+      category: 'storage-unavailable',
+      errorMessage: 'bucket 247-evidence unreachable',
+    });
+  });
+
+  it('records a thrown non-error value without crashing the handler', async () => {
+    const logs = captureLogs();
+
+    const response = await withApiHandler(
+      new Request('http://localhost/api/test'),
+      async () => {
+        throw 'plain string failure';
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(logs.applicationError()).toMatchObject({
+      errorCode: 'UNKNOWN_ERROR',
+      errorMessage: 'Non-error value thrown.',
+    });
+  });
+
+  it.each(['/api/ready', '/api/health'])(
+    'stays silent for a healthy %s probe',
+    async (route) => {
+      const logs = captureLogs();
+
+      const response = await withApiHandler(
+        new Request(`http://localhost${route}`),
+        async () => Response.json({ data: { status: 'ready' } }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(logs.requestLogs()).toHaveLength(0);
+    },
+  );
+
+  it('still logs a failing readiness probe', async () => {
+    const logs = captureLogs();
+
+    const response = await withApiHandler(
+      new Request('http://localhost/api/ready'),
+      async () => Response.json({ error: {} }, { status: 503 }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(logs.requestLogs()).toHaveLength(1);
+    expect(logs.requestLogs()[0][1]).toMatchObject({
+      route: '/api/ready',
+      status: 503,
+    });
+  });
+
+  it('keeps logging non-probe routes that succeed', async () => {
+    const logs = captureLogs();
+
+    await withApiHandler(
+      new Request('http://localhost/api/v1/products'),
+      async () => Response.json({ data: [] }),
+    );
+
+    expect(logs.requestLogs()).toHaveLength(1);
+  });
+
+  it('does not log an application error for a handled domain conflict', async () => {
+    const logs = captureLogs();
+
+    const response = await withApiHandler(
+      new Request('http://localhost/api/test'),
+      async () => {
+        throw new CatalogError('NOT_FOUND');
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expect(logs.applicationError()).toBeUndefined();
   });
 });
 

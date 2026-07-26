@@ -202,15 +202,17 @@ describe.sequential('admin order transition transaction invariants', () => {
     await withFixture(
       { status: OrderStatus.PENDING_CONFIRMATION },
       async ({ actor, order }) => {
-        const requestIds = [
+        // Supplied on purpose: the handler must ignore these and mint its own
+        // identifier, so they must never reach the audit trail.
+        const clientRequestIds = [
           `confirm-a-${randomUUID()}`,
           `confirm-b-${randomUUID()}`,
         ];
         const responses = await Promise.all(
-          requestIds.map((requestId, index) =>
+          clientRequestIds.map((clientRequestId, index) =>
             withApiHandler(
               new Request('http://localhost/api/v1/admin/orders/actions', {
-                headers: { 'x-request-id': requestId },
+                headers: { 'x-request-id': clientRequestId },
               }),
               async (handledRequestId) =>
                 createSuccessResponse(
@@ -248,11 +250,28 @@ describe.sequential('admin order transition transaction invariants', () => {
           status: OrderStatus.CONFIRMED,
           version: order.version + 1,
         });
-        await expect(
-          prisma.auditLog.count({
-            where: { requestId: { in: requestIds }, targetId: order.id },
-          }),
-        ).resolves.toBe(1);
+
+        const successRequestId = success?.headers.get('X-Request-Id');
+        const conflictRequestId = conflict?.headers.get('X-Request-Id');
+        expect(successRequestId).toMatch(/^req_/);
+        expect(conflictRequestId).toMatch(/^req_/);
+        expect(successRequestId).not.toBe(conflictRequestId);
+
+        const auditRows = await prisma.auditLog.findMany({
+          where: { targetId: order.id },
+          select: { requestId: true, action: true },
+        });
+        expect(auditRows).toEqual([
+          { requestId: successRequestId, action: 'order.confirm' },
+        ]);
+        expect(auditRows.map(({ requestId }) => requestId)).not.toContain(
+          conflictRequestId,
+        );
+        for (const clientRequestId of clientRequestIds) {
+          expect(auditRows.map(({ requestId }) => requestId)).not.toContain(
+            clientRequestId,
+          );
+        }
       },
     );
   });

@@ -3,24 +3,42 @@ import { describe, expect, it } from 'vitest';
 import {
   createErrorResponse,
   createSuccessResponse,
+  getClientRequestId,
   getRequestId,
 } from '@/shared/http/response';
 
 describe('HTTP response helpers', () => {
-  it('keeps a valid request identifier', () => {
+  it('never adopts a client supplied request identifier', () => {
     const request = new Request('http://localhost', {
       headers: { 'x-request-id': 'req_123' },
     });
 
-    expect(getRequestId(request)).toBe('req_123');
+    expect(getRequestId(request)).not.toBe('req_123');
+    expect(getRequestId(request)).toMatch(/^req_/);
   });
 
-  it('replaces an invalid request identifier', () => {
+  it('generates a distinct identifier for every request', () => {
+    const request = new Request('http://localhost', {
+      headers: { 'x-request-id': 'req_123' },
+    });
+
+    expect(getRequestId(request)).not.toBe(getRequestId(request));
+  });
+
+  it('keeps a valid client request identifier for correlation only', () => {
+    const request = new Request('http://localhost', {
+      headers: { 'x-request-id': 'req_123' },
+    });
+
+    expect(getClientRequestId(request)).toBe('req_123');
+  });
+
+  it('discards an invalid client request identifier', () => {
     const request = new Request('http://localhost', {
       headers: { 'x-request-id': 'invalid value' },
     });
 
-    expect(getRequestId(request)).toMatch(/^req_/);
+    expect(getClientRequestId(request)).toBeUndefined();
   });
 
   it('uses the documented error envelope without cacheable error data', async () => {

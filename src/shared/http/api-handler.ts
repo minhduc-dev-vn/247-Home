@@ -14,8 +14,16 @@ import {
   type RateLimitAction,
 } from '@/modules/identity/infrastructure/rate-limiter';
 import { trustedClientAddress } from '@/shared/http/client-address';
-import { createErrorResponse, getRequestId } from '@/shared/http/response';
-import { logHttpRequest } from '@/shared/observability/logger';
+import {
+  createErrorResponse,
+  getClientRequestId,
+  getRequestId,
+} from '@/shared/http/response';
+import {
+  describeError,
+  logApplicationError,
+  logHttpRequest,
+} from '@/shared/observability/logger';
 
 class RequestValidationError extends Error {
   constructor() {
@@ -49,6 +57,10 @@ type MutationOptions = {
 
 const defaultJsonBodyBytes = 8 * 1024 * 1024;
 const defaultMutationJsonBodyBytes = 64 * 1024;
+
+// Load balancer and container health checks poll these continuously, so a
+// successful probe is not worth a log line. A failing one still is.
+const probeRoutes = new Set(['/api/ready', '/api/health']);
 
 function parseConfiguredOrigin(value: string | undefined): string | null {
   if (!value) return null;
@@ -215,17 +227,31 @@ export async function withApiHandler(
   request: Request,
   action: (requestId: string) => Promise<Response>,
 ): Promise<Response> {
-  const requestId = getRequestId(request);
+  const requestId = getRequestId();
+  const clientRequestId = getClientRequestId(request);
+  const route = new URL(request.url).pathname;
   const startedAt = Date.now();
   const complete = (response: Response) => {
-    logHttpRequest({
-      requestId,
-      method: request.method,
-      route: new URL(request.url).pathname,
-      status: response.status,
-      durationMs: Date.now() - startedAt,
-    });
+    const isHealthyProbe = probeRoutes.has(route) && response.status < 400;
+    if (!isHealthyProbe)
+      logHttpRequest({
+        requestId,
+        clientRequestId,
+        method: request.method,
+        route,
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+      });
     return response;
+  };
+  const recordServerFailure = (category: string, error: unknown) => {
+    logApplicationError({
+      requestId,
+      clientRequestId,
+      route,
+      category,
+      ...describeError(error),
+    });
   };
   try {
     return complete(await action(requestId));
@@ -263,10 +289,11 @@ export async function withApiHandler(
       error instanceof StorageConfigurationError ||
       error instanceof StorageProviderError
     ) {
+      recordServerFailure('storage-unavailable', error);
       return complete(
         createErrorResponse(
           'STORAGE_UNAVAILABLE',
-          'KhÃ´ng thá»ƒ xá»­ lÃ½ tá»‡p lÃºc nÃ y.',
+          'Không thể xử lý tệp lúc này.',
           requestId,
           503,
         ),
@@ -309,6 +336,7 @@ export async function withApiHandler(
         ),
       );
     }
+    recordServerFailure('unhandled-exception', error);
     return complete(
       createErrorResponse(
         'INTERNAL_ERROR',

@@ -14,6 +14,15 @@ import {
   type StoredPrivateObject,
 } from '@/modules/storage/storage-interface';
 
+function isMissingFile(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'ENOENT'
+  );
+}
+
 export class LocalStorageAdapter implements PrivateObjectStorage {
   constructor(
     private readonly root = path.join(process.cwd(), '.local-uploads'),
@@ -82,13 +91,16 @@ export class LocalStorageAdapter implements PrivateObjectStorage {
 
   async download(storageKey: string): Promise<Buffer | null> {
     this.assertEnabled();
+    const location = this.resolve(storageKey);
+    let content: Buffer;
     try {
-      const content = await readFile(this.resolve(storageKey));
-      if (content.length > maximumEvidenceBytes)
-        throw new StorageConfigurationError('Stored evidence is oversized.');
-      return content;
-    } catch {
-      return null;
+      content = await readFile(location);
+    } catch (error: unknown) {
+      if (isMissingFile(error)) return null;
+      throw error;
     }
+    if (content.length > maximumEvidenceBytes)
+      throw new StorageConfigurationError('Stored evidence is oversized.');
+    return content;
   }
 }
