@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const reuseExistingServer =
+  process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === 'true';
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
@@ -22,7 +25,10 @@ export default defineConfig({
       VNPAY_RETURN_URL: 'http://127.0.0.1:3000/api/v1/payment/return',
     },
     url: 'http://127.0.0.1:3000/api/health',
-    reuseExistingServer: !process.env.CI,
+    // A stale Docker/Next process can otherwise satisfy the health probe while
+    // serving a different revision than the source under test. Reuse is opt-in
+    // for an explicitly managed local server only.
+    reuseExistingServer,
     timeout: 120_000,
   },
 });

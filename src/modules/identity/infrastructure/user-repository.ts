@@ -24,13 +24,18 @@ export function createCustomer(input: {
   passwordHash: string;
 }) {
   return prisma.$transaction(async (transaction) => {
-    await transaction.role.createMany({
-      data: [{ code: RoleCode.CUSTOMER }],
-      skipDuplicates: true,
-    });
-    const customerRole = await transaction.role.findUniqueOrThrow({
+    let customerRole = await transaction.role.findUnique({
       where: { code: RoleCode.CUSTOMER },
     });
+    if (!customerRole) {
+      await transaction.role.createMany({
+        data: [{ code: RoleCode.CUSTOMER }],
+        skipDuplicates: true,
+      });
+      customerRole = await transaction.role.findUniqueOrThrow({
+        where: { code: RoleCode.CUSTOMER },
+      });
+    }
 
     return transaction.user.create({
       data: {

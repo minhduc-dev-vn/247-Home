@@ -13,16 +13,22 @@ import { Input } from '@/components/ui/input';
 import { registrationSchema } from '@/modules/identity/presentation/schemas';
 
 type RegistrationFormValues = { name: string; email: string; password: string };
-type RegistrationErrorPayload = { error?: { code?: string } };
+type RegistrationErrorPayload = {
+  error?: { code?: string; requestId?: string };
+};
 
-function registrationErrorMessage(code: string | undefined): string {
+function registrationErrorMessage(
+  code: string | undefined,
+  requestId: string | undefined,
+): string {
   if (code === 'RATE_LIMITED')
     return 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau.';
   if (code === 'FORBIDDEN')
     return 'Không thể xác minh địa chỉ trang đăng ký. Vui lòng tải lại trang.';
   if (code === 'VALIDATION_ERROR')
     return 'Không thể sử dụng thông tin đăng ký này. Hãy đăng nhập hoặc khôi phục mật khẩu nếu bạn đã có tài khoản.';
-  return 'Hệ thống chưa thể tạo tài khoản. Vui lòng thử lại sau.';
+  const supportCode = requestId ? ` Mã hỗ trợ: ${requestId}.` : '';
+  return `Hệ thống chưa thể tạo tài khoản. Vui lòng thử lại sau.${supportCode}`;
 }
 
 export function RegisterForm() {
@@ -45,7 +51,12 @@ export function RegisterForm() {
         const payload = (await response
           .json()
           .catch(() => null)) as RegistrationErrorPayload | null;
-        setMessage(registrationErrorMessage(payload?.error?.code));
+        setMessage(
+          registrationErrorMessage(
+            payload?.error?.code,
+            payload?.error?.requestId,
+          ),
+        );
         return;
       }
       const result = await signIn('credentials', {
@@ -92,7 +103,7 @@ export function RegisterForm() {
       label: 'Mật khẩu',
       name: 'password' as const,
       type: 'password',
-      errorText: 'Mật khẩu phải có ít nhất 12 ký tự.',
+      errorText: 'Mật khẩu phải có ít nhất 8 ký tự.',
     },
   ];
 

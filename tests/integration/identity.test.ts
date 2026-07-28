@@ -94,7 +94,7 @@ describe('identity persistence and authorization', () => {
 
   it('creates and authenticates a customer through the registration HTTP contract', async () => {
     const email = nextEmail();
-    const password = 'HttpRegistrationPassword-247';
+    const password = 'Http247!';
     const response = await registerPost(
       new Request('http://localhost:3000/api/v1/auth/register', {
         method: 'POST',

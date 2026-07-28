@@ -97,12 +97,16 @@ truncate, or local-demo seed against the staging database.
 
 ## Registration Verification
 
-1. Open `/api/health`; it must return `200`.
+1. Open `/api/health`; it must return `200`. Confirm `data.revision` matches
+   the first 12 characters of the commit selected in the Render deploy.
 2. Open `/register` from `APP_ORIGIN` or the Render-provided external URL.
 3. Create one new email account and confirm the API returns `201`.
 4. Confirm the browser receives a secure Auth.js session cookie after sign-in.
 5. Check Render logs for the application request ID and the corresponding
    Render request trace. Do not log passwords, cookies or database URLs.
+6. If registration returns `500`, copy only the `Mã hỗ trợ` request ID shown
+   by the form and find the matching `application.error` event. Its
+   `errorCode` is safe to share; never copy the error stack or environment.
 
 ## Limits and Escalation
 
@@ -115,6 +119,8 @@ truncate, or local-demo seed against the staging database.
   `NEXTAUTH_URL` and `APP_ORIGIN` to the exact browser-visible HTTPS origin.
 - System roles are installed by migration
   `20260726120000_identity_role_reference_data`; registration does not depend
-  on running the development/demo seed.
+  on running the development/demo seed. Registration also repairs a missing
+  `CUSTOMER` role transactionally, but this is not a substitute for applying
+  migrations.
 - If `429` occurs, inspect the Render request trace and wait for the relevant
   rate-limit window; do not disable the limiter.

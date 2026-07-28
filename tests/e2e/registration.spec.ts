@@ -8,7 +8,7 @@ test('a new customer can register and enter their account', async ({
   page,
 }) => {
   const email = `registration-${randomUUID()}@example.test`;
-  const password = 'PlaywrightRegistrationPassword-247';
+  const password = 'Pass247!';
 
   try {
     await page.goto('/register');

@@ -166,6 +166,9 @@ Query: `serviceAreaId`, `fromDate`, `toDate` tối đa khoảng thời gian đư
 
 | Method | Path | Quyền |
 |---|---|---|
+| POST | `/api/v1/auth/register` | Public, rate limited |
+| POST | `/api/v1/auth/forgot-password` | Public, rate limited |
+| POST | `/api/v1/auth/reset-password` | Public, rate limited |
 | GET | `/api/v1/me` | Authenticated |
 | GET | `/api/v1/addresses` | CUSTOMER own |
 | POST | `/api/v1/addresses` | CUSTOMER own |
@@ -173,6 +176,11 @@ Query: `serviceAreaId`, `fromDate`, `toDate` tối đa khoảng thời gian đư
 | DELETE | `/api/v1/addresses/{id}` | CUSTOMER own, soft archive |
 
 Auth.js endpoints nằm dưới route chuẩn được cấu hình; không tái tạo login protocol tùy ý.
+
+Mật khẩu đăng ký, đăng nhập và đặt lại có độ dài từ 8 đến 128 ký tự.
+Registration tạo user và gắn role `CUSTOMER` trong cùng transaction. Role hệ
+thống được cài bởi migration; application chỉ tạo bù `CUSTOMER` khi reference
+data này thực sự thiếu.
 
 Address mutation:
 
@@ -672,7 +680,7 @@ Không cho xóa ADMIN cuối cùng. Mutation tăng `authVersion`, có audit; ses
 
 | Method | Path | Auth | Nội dung |
 |---|---|---|---|
-| GET | `/api/health` | Local/test policy | Process alive |
+| GET | `/api/health` | Local/test policy | Process alive và deployment revision không nhạy cảm |
 | GET | `/api/ready` | Local/test policy | DB reachable với timeout |
 
 Không trả config, dependency version, hostname nhạy cảm hoặc credential.

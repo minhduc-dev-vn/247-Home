@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import {
   IdentityError,
   registrationSchema,
@@ -12,6 +14,10 @@ import { logApplicationError } from '@/shared/observability/logger';
 
 function safeErrorCode(error: unknown): string {
   if (error instanceof IdentityError) return error.code;
+  if (error instanceof Prisma.PrismaClientKnownRequestError)
+    return `PRISMA_${error.code}`;
+  if (error instanceof Prisma.PrismaClientInitializationError)
+    return 'PRISMA_INITIALIZATION_ERROR';
   if (error instanceof Error) return error.name || 'UNEXPECTED_ERROR';
   return 'UNKNOWN_ERROR';
 }

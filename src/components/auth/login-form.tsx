@@ -80,7 +80,7 @@ export function LoginForm() {
             className="mt-1.5 block text-sm text-[var(--error)]"
             id="login-password-error"
           >
-            Mật khẩu phải có ít nhất 12 ký tự.
+            Mật khẩu phải có ít nhất 8 ký tự.
           </span>
         ) : null}
       </label>
