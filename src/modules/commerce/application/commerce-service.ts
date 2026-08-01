@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import {
+  AssignmentStatus,
   AppointmentStatus,
   CartStatus,
   InventoryDisposition,
+  PaymentMethod,
+  PaymentSessionStatus,
   PaymentStatus,
   Prisma,
 } from '@prisma/client';
@@ -32,6 +35,8 @@ import {
 } from '@/modules/commerce/infrastructure/checkout-repository';
 import {
   lockOrder,
+  lockOrderAppointment,
+  lockOrderSlot,
   lockPayment,
 } from '@/modules/commerce/infrastructure/order-repository';
 import {
@@ -672,7 +677,10 @@ export async function listOrders(
 ) {
   const customer = requireCustomer(actor);
   const orders = await prisma.order.findMany({
-    where: { userId: customer.userId },
+    where: {
+      userId: customer.userId,
+      ...(input.status ? { status: input.status } : {}),
+    },
     select: orderSelect,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
@@ -730,6 +738,16 @@ export async function transitionOrder(
   reason: string,
   requestId: string,
 ) {
+  if (action === 'cancel' || action === 'expire')
+    return cancelOrExpireOrder(
+      actor,
+      id,
+      action,
+      expectedVersion,
+      reason,
+      requestId,
+    );
+
   const operationsActor = requireOrderOperationsActor(actor);
   return prisma.$transaction(async (transaction) => {
     if (!(await lockOrder(transaction, id)))
@@ -738,11 +756,18 @@ export async function transitionOrder(
       where: { id },
       select: {
         id: true,
+        userId: true,
         status: true,
         version: true,
         inventoryStatus: true,
-        appointment: { select: { id: true } },
-        payment: { select: { method: true, status: true } },
+        appointment: { select: { id: true, status: true } },
+        payment: {
+          select: {
+            method: true,
+            status: true,
+            sessions: { select: { status: true, expiresAt: true } },
+          },
+        },
         items: {
           select: {
             id: true,
@@ -769,6 +794,15 @@ export async function transitionOrder(
       current: order.status,
       inventoryStatus: order.inventoryStatus,
       hasAppointment: Boolean(order.appointment),
+      appointmentStatus: order.appointment?.status ?? null,
+      isOwner: order.userId === operationsActor.userId,
+      hasActiveOnlinePaymentSession:
+        order.payment?.sessions.some(
+          (session) =>
+            (session.status === PaymentSessionStatus.CREATED ||
+              session.status === PaymentSessionStatus.PENDING) &&
+            session.expiresAt > new Date(),
+        ) ?? false,
       paymentMethod: order.payment?.method ?? null,
       paymentStatus: order.payment?.status ?? null,
     });
@@ -869,6 +903,412 @@ function aggregateOrderItems(
     );
 }
 
+type ReservedOrderItem = {
+  id: string;
+  productVariantId: string;
+  quantity: number;
+  inventoryAllocation: {
+    productVariantId: string;
+    quantity: number;
+    status: InventoryDisposition;
+  } | null;
+};
+
+async function releaseOrderInventory(
+  transaction: Prisma.TransactionClient,
+  items: ReservedOrderItem[],
+) {
+  for (const item of items) {
+    if (
+      !item.inventoryAllocation ||
+      item.inventoryAllocation.status !== InventoryDisposition.RESERVED ||
+      item.inventoryAllocation.productVariantId !== item.productVariantId ||
+      item.inventoryAllocation.quantity !== item.quantity
+    )
+      throw new CatalogError(
+        'INVENTORY_CONFLICT',
+        'INVENTORY_RESERVATION_INVALID',
+      );
+  }
+
+  const requirements = aggregateOrderItems(items);
+  if (!requirements.length) throw new CatalogError('INVENTORY_CONFLICT');
+
+  const locked = [] as Array<{
+    productVariantId: string;
+    quantity: number;
+    version: number;
+  }>;
+  for (const requirement of requirements) {
+    const inventory = await lockInventory(
+      transaction,
+      requirement.productVariantId,
+    );
+    if (!inventory || inventory.reserved < requirement.quantity)
+      throw new CatalogError(
+        'INVENTORY_CONFLICT',
+        'INVENTORY_RESERVATION_INVALID',
+      );
+    locked.push({ ...requirement, version: inventory.version });
+  }
+
+  for (const requirement of locked) {
+    const updated = await transaction.inventory.updateMany({
+      where: {
+        productVariantId: requirement.productVariantId,
+        version: requirement.version,
+        reserved: { gte: requirement.quantity },
+      },
+      data: {
+        reserved: { decrement: requirement.quantity },
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new CatalogError('INVENTORY_CONFLICT');
+  }
+
+  const releasedAt = new Date();
+  for (const item of [...items].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  )) {
+    const updated = await transaction.inventoryAllocation.updateMany({
+      where: {
+        orderItemId: item.id,
+        productVariantId: item.productVariantId,
+        quantity: item.quantity,
+        status: InventoryDisposition.RESERVED,
+      },
+      data: {
+        status: InventoryDisposition.RELEASED,
+        releasedAt,
+      },
+    });
+    if (updated.count !== 1) throw new CatalogError('INVENTORY_CONFLICT');
+  }
+}
+
+async function releaseOrderAppointmentCapacity(
+  transaction: Prisma.TransactionClient,
+  appointment: {
+    id: string;
+    status: AppointmentStatus;
+    version: number;
+  } | null,
+) {
+  if (!appointment) return null;
+
+  const lockedAppointment = await lockOrderAppointment(
+    transaction,
+    appointment.id,
+  );
+  if (
+    !lockedAppointment ||
+    lockedAppointment.status !== appointment.status ||
+    lockedAppointment.version !== appointment.version ||
+    lockedAppointment.capacityReleasedAt
+  )
+    throw new CatalogError('CONCURRENT_MODIFICATION');
+
+  const lockedSlot = await lockOrderSlot(transaction, lockedAppointment.slotId);
+  if (!lockedSlot || lockedSlot.bookedCount < 1)
+    throw new CatalogError('SLOT_UNAVAILABLE');
+
+  const releasedAt = new Date();
+  const slot = await transaction.installationSlot.updateMany({
+    where: {
+      id: lockedSlot.id,
+      version: lockedSlot.version,
+      bookedCount: { gt: 0 },
+    },
+    data: {
+      bookedCount: { decrement: 1 },
+      version: { increment: 1 },
+    },
+  });
+  if (slot.count !== 1) throw new CatalogError('SLOT_UNAVAILABLE');
+
+  const updatedAppointment =
+    await transaction.installationAppointment.updateMany({
+      where: {
+        id: appointment.id,
+        version: appointment.version,
+        status: appointment.status,
+        capacityReleasedAt: null,
+      },
+      data: {
+        status: AppointmentStatus.CANCELLED,
+        capacityReleasedAt: releasedAt,
+        version: { increment: 1 },
+      },
+    });
+  if (updatedAppointment.count !== 1)
+    throw new CatalogError('CONCURRENT_MODIFICATION');
+
+  await transaction.technicianAssignment.updateMany({
+    where: {
+      appointmentId: appointment.id,
+      status: AssignmentStatus.ACTIVE,
+    },
+    data: { status: AssignmentStatus.CANCELLED },
+  });
+
+  return { id: appointment.id, status: AppointmentStatus.CANCELLED };
+}
+
+async function cancelUnpaidPayment(
+  transaction: Prisma.TransactionClient,
+  paymentId: string | undefined,
+) {
+  if (!paymentId) throw new CatalogError('INVALID_STATE_TRANSITION');
+  if (!(await lockPayment(transaction, paymentId)))
+    throw new CatalogError('NOT_FOUND');
+
+  const payment = await transaction.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      method: true,
+      status: true,
+      version: true,
+      sessions: {
+        select: { id: true, status: true, expiresAt: true },
+      },
+    },
+  });
+  if (!payment) throw new CatalogError('NOT_FOUND');
+
+  const now = new Date();
+  const hasActiveOnlinePaymentSession = payment.sessions.some(
+    (session) =>
+      (session.status === PaymentSessionStatus.CREATED ||
+        session.status === PaymentSessionStatus.PENDING) &&
+      session.expiresAt > now,
+  );
+  if (hasActiveOnlinePaymentSession)
+    throw new CatalogError(
+      'INVALID_STATE_TRANSITION',
+      'PAYMENT_SESSION_ACTIVE',
+    );
+  if (
+    payment.status === PaymentStatus.PAID ||
+    payment.status === PaymentStatus.REFUNDED
+  )
+    throw new CatalogError('INVALID_STATE_TRANSITION', 'PAYMENT_NOT_READY');
+
+  if (
+    payment.status === PaymentStatus.CREATED ||
+    payment.status === PaymentStatus.PENDING ||
+    payment.status === PaymentStatus.PROCESSING
+  ) {
+    const updated = await transaction.payment.updateMany({
+      where: {
+        id: payment.id,
+        version: payment.version,
+        status: payment.status,
+      },
+      data: {
+        status: PaymentStatus.CANCELLED,
+        cancelledAt: now,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new CatalogError('CONCURRENT_MODIFICATION');
+  }
+
+  await transaction.paymentSession.updateMany({
+    where: {
+      paymentId: payment.id,
+      status: {
+        in: [PaymentSessionStatus.CREATED, PaymentSessionStatus.PENDING],
+      },
+      expiresAt: { lte: now },
+    },
+    data: { status: PaymentSessionStatus.EXPIRED },
+  });
+
+  return {
+    id: payment.id,
+    status:
+      payment.status === PaymentStatus.CREATED ||
+      payment.status === PaymentStatus.PENDING ||
+      payment.status === PaymentStatus.PROCESSING
+        ? PaymentStatus.CANCELLED
+        : payment.status,
+    hasActiveOnlinePaymentSession,
+  };
+}
+
+async function cancelOrExpireOrder(
+  actor: IdentityActor | null,
+  id: string,
+  action: Extract<OrderAction, 'cancel' | 'expire'>,
+  expectedVersion: number,
+  reason: string,
+  requestId: string,
+) {
+  if (!actor) throw new CatalogError('UNAUTHENTICATED');
+
+  const isOperations = actorHasRole(actor, ['STAFF', 'MANAGER', 'ADMIN']);
+  const isCustomer = actorHasRole(actor, customerRoles);
+  if (action === 'expire' && !actorHasRole(actor, ['MANAGER', 'ADMIN']))
+    throw new CatalogError('FORBIDDEN');
+  if (action === 'cancel' && !isOperations && !isCustomer)
+    throw new CatalogError('FORBIDDEN');
+
+  return prisma.$transaction(async (transaction) => {
+    if (!(await lockOrder(transaction, id)))
+      throw new CatalogError('NOT_FOUND');
+
+    const order = await transaction.order.findFirst({
+      where: {
+        id,
+        ...(action === 'cancel' && !isOperations
+          ? { userId: actor.userId }
+          : {}),
+      },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        version: true,
+        inventoryStatus: true,
+        appointment: { select: { id: true, status: true, version: true } },
+        payment: { select: { id: true, method: true, status: true } },
+        items: {
+          select: {
+            id: true,
+            productVariantId: true,
+            quantity: true,
+            inventoryAllocation: {
+              select: {
+                productVariantId: true,
+                quantity: true,
+                status: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!order) throw new CatalogError('NOT_FOUND');
+    if (order.version !== expectedVersion)
+      throw new CatalogError('CONCURRENT_MODIFICATION');
+
+    let payment: {
+      id: string;
+      method: PaymentMethod;
+      status: PaymentStatus;
+      sessions: Array<{
+        status: PaymentSessionStatus;
+        expiresAt: Date;
+      }>;
+    } | null = null;
+    if (order.payment) {
+      if (!(await lockPayment(transaction, order.payment.id)))
+        throw new CatalogError('NOT_FOUND');
+      payment = await transaction.payment.findUnique({
+        where: { id: order.payment.id },
+        select: {
+          id: true,
+          method: true,
+          status: true,
+          sessions: { select: { status: true, expiresAt: true } },
+        },
+      });
+      if (!payment) throw new CatalogError('NOT_FOUND');
+    }
+
+    const now = new Date();
+    const hasActiveOnlinePaymentSession =
+      payment?.sessions.some(
+        (session) =>
+          (session.status === PaymentSessionStatus.CREATED ||
+            session.status === PaymentSessionStatus.PENDING) &&
+          session.expiresAt > now,
+      ) ?? false;
+    const decision = decideOrderTransition({
+      actor,
+      action,
+      current: order.status,
+      inventoryStatus: order.inventoryStatus,
+      hasAppointment: Boolean(order.appointment),
+      appointmentStatus: order.appointment?.status ?? null,
+      isOwner: order.userId === actor.userId,
+      hasActiveOnlinePaymentSession,
+      paymentMethod: payment?.method ?? null,
+      paymentStatus: payment?.status ?? null,
+    });
+    if (!decision.allowed) throw orderPolicyError(decision.code);
+
+    if (decision.inventoryEffect === 'RELEASE_RESERVED')
+      await releaseOrderInventory(transaction, order.items);
+    const releasedAppointment =
+      decision.appointmentEffect === 'CANCEL_AND_RELEASE_CAPACITY'
+        ? await releaseOrderAppointmentCapacity(transaction, order.appointment)
+        : null;
+    const cancelledPayment =
+      decision.paymentEffect === 'CANCEL_UNPAID'
+        ? await cancelUnpaidPayment(transaction, payment?.id)
+        : null;
+
+    const cancelledAt = new Date();
+    const updated = await transaction.order.updateMany({
+      where: {
+        id: order.id,
+        version: expectedVersion,
+        status: decision.current,
+        inventoryStatus: order.inventoryStatus,
+      },
+      data: {
+        status: decision.next,
+        inventoryStatus: InventoryDisposition.RELEASED,
+        cancellationReason: reason,
+        cancelledAt,
+        version: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new CatalogError('CONCURRENT_MODIFICATION');
+
+    await transaction.auditLog.create({
+      data: {
+        actorUserId: actor.userId,
+        action: `order.${action}`,
+        targetType: 'order',
+        targetId: order.id,
+        before: {
+          status: order.status,
+          version: order.version,
+          inventoryStatus: order.inventoryStatus,
+          appointmentStatus: order.appointment?.status ?? null,
+          paymentStatus: payment?.status ?? null,
+        },
+        after: {
+          status: decision.next,
+          version: order.version + 1,
+          inventoryStatus: InventoryDisposition.RELEASED,
+          appointmentStatus: releasedAppointment?.status ?? null,
+          paymentStatus: cancelledPayment?.status ?? payment?.status ?? null,
+        },
+        reason,
+        requestId,
+      },
+    });
+
+    return transaction.order.findUniqueOrThrow({
+      where: { id: order.id },
+      select: {
+        id: true,
+        status: true,
+        inventoryStatus: true,
+        version: true,
+        cancelledAt: true,
+        cancellationReason: true,
+        updatedAt: true,
+      },
+    });
+  });
+}
+
 async function consumeOrderInventory(
   transaction: Prisma.TransactionClient,
   items: Array<{
@@ -965,11 +1405,18 @@ export async function getAvailableOrderActions(
     where: { id },
     select: {
       id: true,
+      userId: true,
       version: true,
       status: true,
       inventoryStatus: true,
-      appointment: { select: { id: true } },
-      payment: { select: { method: true, status: true } },
+      appointment: { select: { id: true, status: true } },
+      payment: {
+        select: {
+          method: true,
+          status: true,
+          sessions: { select: { status: true, expiresAt: true } },
+        },
+      },
     },
   });
   if (!order) throw new CatalogError('NOT_FOUND');
@@ -983,6 +1430,15 @@ export async function getAvailableOrderActions(
         current: order.status,
         inventoryStatus: order.inventoryStatus,
         hasAppointment: Boolean(order.appointment),
+        appointmentStatus: order.appointment?.status ?? null,
+        isOwner: order.userId === operationsActor.userId,
+        hasActiveOnlinePaymentSession:
+          order.payment?.sessions.some(
+            (session) =>
+              (session.status === PaymentSessionStatus.CREATED ||
+                session.status === PaymentSessionStatus.PENDING) &&
+              session.expiresAt > new Date(),
+          ) ?? false,
         paymentMethod: order.payment?.method ?? null,
         paymentStatus: order.payment?.status ?? null,
       });
@@ -991,6 +1447,126 @@ export async function getAvailableOrderActions(
         : [];
     }),
   };
+}
+
+export async function getAvailableCustomerOrderActions(
+  actor: IdentityActor | null,
+  id: string,
+) {
+  const customer = requireCustomer(actor);
+  const order = await prisma.order.findFirst({
+    where: { id, userId: customer.userId },
+    select: {
+      id: true,
+      userId: true,
+      version: true,
+      status: true,
+      inventoryStatus: true,
+      appointment: { select: { id: true, status: true } },
+      payment: {
+        select: {
+          method: true,
+          status: true,
+          sessions: { select: { status: true, expiresAt: true } },
+        },
+      },
+    },
+  });
+  if (!order) return null;
+
+  const decision = decideOrderTransition({
+    actor: customer,
+    action: 'cancel',
+    current: order.status,
+    inventoryStatus: order.inventoryStatus,
+    hasAppointment: Boolean(order.appointment),
+    appointmentStatus: order.appointment?.status ?? null,
+    isOwner: true,
+    hasActiveOnlinePaymentSession:
+      order.payment?.sessions.some(
+        (session) =>
+          (session.status === PaymentSessionStatus.CREATED ||
+            session.status === PaymentSessionStatus.PENDING) &&
+          session.expiresAt > new Date(),
+      ) ?? false,
+    paymentMethod: order.payment?.method ?? null,
+    paymentStatus: order.payment?.status ?? null,
+  });
+  return {
+    id: order.id,
+    version: order.version,
+    actions: decision.allowed
+      ? [{ action: 'cancel' as const, label: orderActionLabels.cancel }]
+      : [],
+  };
+}
+
+export type ExpireUnpaidOrdersInput = {
+  before: Date;
+  limit: number;
+  reason: string;
+};
+
+export async function expireUnpaidOrders(
+  actor: IdentityActor | null,
+  input: ExpireUnpaidOrdersInput,
+) {
+  if (!actor) throw new CatalogError('UNAUTHENTICATED');
+  if (!actorHasRole(actor, ['MANAGER', 'ADMIN']))
+    throw new CatalogError('FORBIDDEN');
+  if (
+    !(input.before instanceof Date) ||
+    Number.isNaN(input.before.valueOf()) ||
+    !Number.isInteger(input.limit) ||
+    input.limit < 1 ||
+    input.limit > 100
+  )
+    throw new CatalogError('CONFLICT', 'EXPIRY_INPUT_INVALID');
+
+  const candidates = await prisma.order.findMany({
+    where: {
+      status: 'PENDING_CONFIRMATION',
+      inventoryStatus: InventoryDisposition.RESERVED,
+      createdAt: { lt: input.before },
+      payment: {
+        is: {
+          status: { notIn: [PaymentStatus.PAID, PaymentStatus.REFUNDED] },
+        },
+      },
+    },
+    select: { id: true, version: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    take: input.limit,
+  });
+
+  let expired = 0;
+  let skipped = 0;
+  for (const candidate of candidates) {
+    try {
+      await transitionOrder(
+        actor,
+        candidate.id,
+        'expire',
+        candidate.version,
+        input.reason,
+        `order-expiry-${randomUUID()}`,
+      );
+      expired += 1;
+    } catch (error) {
+      if (
+        error instanceof CatalogError &&
+        ['CONCURRENT_MODIFICATION', 'INVALID_STATE_TRANSITION'].includes(
+          error.code,
+        )
+      ) {
+        skipped += 1;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  return { candidates: candidates.length, expired, skipped };
 }
 
 export async function transitionPayment(

@@ -3,10 +3,7 @@ import {
   productImageInputSchema,
   requireCatalogAccess,
 } from '@/modules/catalog';
-import {
-  removeLocalProductImage,
-  saveLocalProductImage,
-} from '@/modules/catalog/infrastructure/local-image-storage';
+import { uploadAndPersistProductImage } from '@/modules/catalog/infrastructure/product-image-storage';
 import { getCurrentActor } from '@/shared/auth/server';
 import { parseCuid, withJsonMutation } from '@/shared/http/api-handler';
 import { createSuccessResponse } from '@/shared/http/response';
@@ -25,26 +22,20 @@ export async function POST(
       const actor = await getCurrentActor();
       requireCatalogAccess(actor);
       const productId = parseCuid((await context.params).id);
-      const stored = await saveLocalProductImage(input);
-      try {
-        const image = await addProductImage(actor, productId, {
-          storageKey: stored.storageKey,
-          altText: input.altText,
-          mimeType: input.contentType,
-          byteSize: stored.byteSize,
-        });
-        return createSuccessResponse(image, requestId, { status: 201 });
-      } catch (error: unknown) {
-        try {
-          await removeLocalProductImage(stored.storageKey);
-        } catch (cleanupError: unknown) {
-          throw new AggregateError(
-            [error, cleanupError],
-            'Product image persistence and cleanup both failed.',
-          );
-        }
-        throw error;
-      }
+      const image = await uploadAndPersistProductImage(input, (stored) =>
+        addProductImage(
+          actor,
+          productId,
+          {
+            storageKey: stored.storageKey,
+            altText: input.altText,
+            mimeType: stored.contentType,
+            byteSize: stored.byteSize,
+          },
+          requestId,
+        ),
+      );
+      return createSuccessResponse(image, requestId, { status: 201 });
     },
   );
 }

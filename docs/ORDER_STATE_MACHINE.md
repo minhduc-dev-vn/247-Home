@@ -65,9 +65,37 @@ Không có transition ra khỏi terminal state.
 | `READY_FOR_INSTALLATION` | `installation-started` | `INSTALLATION_IN_PROGRESS` | Orchestration từ installation use case | Appointment chuyển `IN_PROGRESS` thành công | Đồng bộ order state trong cùng transaction |
 | `INSTALLATION_IN_PROGRESS` | `installation-completed` | `COMPLETED` | Orchestration từ installation use case | Appointment `COMPLETED`; payment policy đạt | Set completed, version++, audit/event |
 | `READY_FOR_INSTALLATION` | `complete-without-installation` | `COMPLETED` | STAFF/MANAGER/ADMIN | Đơn không yêu cầu lắp; payment policy đạt | Set completed, audit |
-| `PENDING_CONFIRMATION` | `cancel` | `CANCELLED` | CUSTOMER own, STAFF/MANAGER/ADMIN | Chính sách hủy; reason | Release inventory/slot đúng một lần; cancel payment pending; audit nếu internal |
-| `CONFIRMED` | `cancel` | `CANCELLED` | CUSTOMER own theo deadline; STAFF/MANAGER/ADMIN | Chính sách hủy; reason | Release inventory/slot; cancel payment pending; audit |
-| `PROCESSING` | `cancel` | `CANCELLED` | MANAGER/ADMIN baseline | Chưa consume; lý do bắt buộc | Release inventory/slot; audit |
+| `PENDING_CONFIRMATION` | `cancel` | `CANCELLED` | CUSTOMER owner; STAFF/MANAGER/ADMIN | unpaid payment, no active online session, `expectedVersion` | Release reserved inventory/slot exactly once; audit |
+| `CONFIRMED` | `cancel` | `CANCELLED` | STAFF/MANAGER/ADMIN | unpaid payment, no active online session, `expectedVersion` | Release reserved inventory/slot exactly once; audit |
+| `PROCESSING` | `cancel` | `CANCELLED` | MANAGER/ADMIN | inventory is still `RESERVED`; unpaid payment; `expectedVersion` | Release reserved inventory/slot exactly once; audit |
+| `PENDING_CONFIRMATION` | `expire` | `CANCELLED` | MANAGER/ADMIN maintenance action | bounded operator-supplied cutoff, unpaid payment, no active online session | Same release transaction and `order.expire` audit |
+
+### Cancellation and expiry policy implemented in Phase 3
+
+- A customer can cancel only their own `PENDING_CONFIRMATION` order. If it has
+  an appointment, the appointment must still be `SCHEDULED` or
+  `ASSIGNMENT_PENDING`.
+- STAFF can cancel an unconsumed `PENDING_CONFIRMATION` or `CONFIRMED` order.
+  MANAGER and ADMIN can additionally cancel `PROCESSING`. Operations can cancel
+  only an appointment in `SCHEDULED`, `ASSIGNMENT_PENDING`, `ASSIGNED`, or
+  `RESCHEDULE_REQUIRED`; active installation states cannot be cancelled through
+  this path.
+- `expire` is not a timer or background job. It is an explicit, bounded
+  MANAGER/ADMIN maintenance action over an operator-supplied UTC cutoff. The
+  command defaults to 25 orders and rejects a limit above 100.
+- `PAID` and `REFUNDED` payment records are rejected. A still-payable VNPAY
+  session (`CREATED`/`PENDING` with a future expiry) is rejected to prevent a
+  local cancellation from racing an external payment. Expired local sessions
+  are marked `EXPIRED` in the transaction; unpaid payment records in
+  `CREATED`, `PENDING`, or `PROCESSING` become `CANCELLED`.
+- A cancellation moves each allocation `RESERVED -> RELEASED`, decreases only
+  `inventory.reserved` (never `onHand`), cancels the appointment, decrements
+  the slot once, and cancels active technician assignments. The order is then
+  conditionally updated to `CANCELLED`; one redacted audit record is written
+  for every actor, including a customer.
+- The canceled checkout/idempotency key is never reactivated. A new checkout is
+  required to reserve released inventory again. Customer notification is not
+  implemented in this repository and remains an Operations/support procedure.
 
 ## 5. Transition bị cấm
 
@@ -101,7 +129,14 @@ Baseline khuyến nghị:
 ### VNPAY
 
 - Checkout creates the payment from the database total in `PENDING`.
-- Creating an idempotent provider session moves it to `PROCESSING`.
+- Creating an idempotent provider session moves it to `PROCESSING`. At most one
+  `CREATED`/`PENDING` session with a future expiry may be payable for a payment.
+  The same idempotency key replays that same session; a different key is
+  rejected while it remains active. A replacement is permitted only after the
+  prior local session is atomically marked `EXPIRED`.
+- New customer VNPay sessions are disabled unless the explicit server-side
+  public-enable gate is approved and configured. Disabling new issuance does
+  not discard or invalidate a signed IPN for an existing session.
 - Only a valid HMAC-SHA512 IPN may move it to `PAID` or `FAILED`.
 - A verified `PAID` IPN conditionally changes an order from
   `PENDING_CONFIRMATION` to `CONFIRMED` in the same transaction.
@@ -112,6 +147,11 @@ Baseline khuyến nghị:
   installation execution.
 - Payment `FAILED` khi order còn `PENDING_CONFIRMATION` có thể cho khách thử đối soát lại hoặc hủy; không tạo gateway retry.
 - Payment amount luôn bằng `orders.grand_total`, không nhận từ client.
+
+- A signed amount/currency mismatch is persisted as a rejected provider event;
+  a second provider transaction or a terminal-state callback is persisted for
+  reconciliation. Neither path can make a second order transition or audit
+  event.
 
 ### Manual payment action
 
@@ -140,6 +180,15 @@ Mỗi transition:
 
 Riêng `mark-ready-for-installation`, transaction phải khóa toàn bộ inventory theo product variant ID ổn định, xác minh mỗi order item có đúng một `inventory_allocations` row ở trạng thái `RESERVED` với đúng variant/quantity, rồi giảm đồng thời `onHand` và `reserved`, chuyển allocation sang `CONSUMED`, và conditional-update order. Thiếu hoặc sai ownership reservation, hay bất kỳ inventory/allocation write nào thất bại, sẽ rollback inventory, allocations, order và audit.
 
+For `cancel` and `expire`, the transaction locks the order, then its payment,
+then inventory rows by product-variant ID, appointment, and installation slot.
+It verifies every allocation is still `RESERVED`, conditionally decrements only
+`reserved`, conditionally releases appointment capacity, conditionally updates
+the order with `id + expectedVersion + status + inventoryStatus`, and creates
+the audit record before commit. A reservation, slot, payment, order, or audit
+failure rolls back every write. A stale retry receives `409` and cannot release
+stock or capacity a second time.
+
 Request lặp:
 
 - Request lặp với `expectedVersion` cũ trả `409 CONCURRENT_MODIFICATION`; không chạy lại side effect và không tạo audit trùng.
@@ -160,7 +209,7 @@ Request lặp:
 
 ## 9. Audit và lịch sử
 
-Audit bắt buộc cho transition do STAFF/MANAGER/ADMIN:
+Audit bắt buộc cho mọi cancel/expire transition va cho transition do STAFF/MANAGER/ADMIN:
 
 - actor và role snapshot;
 - action, from/to;
@@ -169,14 +218,16 @@ Audit bắt buộc cho transition do STAFF/MANAGER/ADMIN:
 - request ID;
 - dữ liệu before/after đã redact.
 
-Action CUSTOMER được ghi business timeline nếu bảng history được duyệt, nhưng không nhất thiết là admin audit. Không ghi địa chỉ đầy đủ, token hoặc payment credential vào audit.
+Customer cancellation is also recorded as `order.cancel`; audit payloads do not
+contain full address, token, or payment credentials.
 
 ## 10. Test bắt buộc
 
 - Mọi transition hợp lệ theo table thành công.
 - Mọi cặp from/action khác bị từ chối.
 - Terminal state không đổi.
-- Customer chỉ hủy order own và đúng deadline.
+- Customer chi huy order own o `PENDING_CONFIRMATION`; STAFF/MANAGER/ADMIN
+  cancellation and explicit manager/admin expiry follow the table above.
 - Payment guard COD/chuyển khoản đúng policy.
 - Consume/release inventory đúng một lần.
 - Hai transition cùng version: tối đa một thành công.
@@ -190,7 +241,9 @@ Action CUSTOMER được ghi business timeline nếu bảng history được duy
 
 1. Khi nào order được confirm cho COD và chuyển khoản.
 2. **Đã duyệt:** consume inventory khi chuyển sang `READY_FOR_INSTALLATION`.
-3. Customer được hủy đến state/deadline nào.
+3. **Phase 3 baseline:** customer cancel only at `PENDING_CONFIRMATION`; no
+   automatic expiry or cancellation deadline exists until Product/Operations
+   approve a new policy.
 4. Có phí hủy hoặc xử lý đơn đã consume không.
 5. COD được đánh dấu paid ở mốc nào.
 6. Đơn không cần lắp dùng state nào.

@@ -1,8 +1,10 @@
 import {
+  authorizeOrderActor,
   getAvailableOrderActions,
   orderActionSchema,
   transitionOrder,
 } from '@/modules/commerce';
+import { CatalogError } from '@/modules/catalog';
 import { getCurrentActor } from '@/shared/auth/server';
 import {
   parseCuid,
@@ -18,10 +20,13 @@ export async function POST(
     request,
     orderActionSchema,
     { rateLimitScope: 'operations-order-action' },
-    async (requestId, input) =>
-      createSuccessResponse(
+    async (requestId, input) => {
+      const actor = await getCurrentActor();
+      const authorization = authorizeOrderActor(actor);
+      if (!authorization.allowed) throw new CatalogError(authorization.code);
+      return createSuccessResponse(
         await transitionOrder(
-          await getCurrentActor(),
+          actor,
           parseCuid((await context.params).id),
           input.action,
           input.expectedVersion,
@@ -29,7 +34,8 @@ export async function POST(
           requestId,
         ),
         requestId,
-      ),
+      );
+    },
   );
 }
 

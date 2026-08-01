@@ -6,11 +6,13 @@ export const evidenceMimeTypes = [
 
 export type EvidenceMimeType = (typeof evidenceMimeTypes)[number];
 
+export type PrivateImagePurpose = 'catalog' | 'installation' | 'warranty';
+
 export type StorageUploadInput = {
   filename: string;
   contentType: EvidenceMimeType;
   contentBase64: string;
-  purpose?: 'installation' | 'warranty';
+  purpose?: PrivateImagePurpose;
 };
 
 export type StoredPrivateObject = {

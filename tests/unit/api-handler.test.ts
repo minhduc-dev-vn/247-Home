@@ -375,8 +375,7 @@ describe('shared sensitive mutation security contract', () => {
     vi.stubEnv('DEPLOYMENT_ENV', 'staging');
     vi.stubEnv('RENDER_STAGING_SINGLE_INSTANCE', 'true');
     vi.stubEnv('RATE_LIMIT_BACKEND', 'memory');
-    vi.stubEnv('TRUST_PROXY_HEADERS', 'true');
-    vi.stubEnv('TRUSTED_PROXY_PROVIDER', 'render');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'false');
     try {
       const action = vi.fn(async () => Response.json({ data: {} }));
       const response = await withJsonMutation(

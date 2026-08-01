@@ -1,5 +1,10 @@
 # Render Staging Runbook
 
+> Scope note (2026-08-01): this is a cost-controlled Render demo/staging
+> procedure. AWS infrastructure execution is deferred by the service owner.
+> Passing this runbook does not qualify the application for production traffic,
+> multi-instance rate limiting, or real payment acceptance.
+
 ## Scope
 
 This runbook is for one-instance public Render staging used to validate the
@@ -15,10 +20,12 @@ CloudFront/WAF ingress contract. The explicit staging profile permits the
 existing in-memory limiter only when the service is deliberately held to one
 instance and Render is the runtime.
 
-Render documents that public web-service traffic passes through its edge and
-that applications should use `X-Forwarded-For` for client IP addresses. The
-staging profile accepts that header only when `RENDER=true` and
-`TRUSTED_PROXY_PROVIDER=render`.
+Render terminates public HTTPS at its load balancer before forwarding to the web
+service. This project does not treat `X-Forwarded-For` as a trusted identity on
+that path: a viewer can supply it and no reviewed provider contract here proves
+that the app receives an overwrite-only value. The staging profile therefore
+uses the application's common fallback bucket. This is deliberately less
+precise but fail-closed for a one-instance demo.
 
 ## Render Service Settings
 
@@ -30,7 +37,7 @@ the repository `Dockerfile`.
 | Language | `Docker` |
 | Dockerfile path | `./Dockerfile` |
 | Docker command | Leave blank to use the image `CMD` |
-| Health check path | `/api/health` |
+| Health check path | `/api/ready` |
 | Instances | Exactly one; disable autoscaling |
 
 Set `PORT=10000`, or remove a manually configured `PORT` and allow Render to
@@ -42,6 +49,21 @@ The runtime image deliberately excludes migration tooling. Run
 staging database before deploying an application revision. Do not place a
 non-functional `pnpm db:migrate` command in the Docker service's pre-deploy
 field.
+
+## Source Identity and Rollback
+
+1. Record the branch, immutable Git commit, and Render deploy ID selected for a
+   staging deploy in the release record before promoting any traffic.
+2. Verify `/api/health` exposes the expected revision prefix and `/api/ready`
+   returns `200` before the smoke suite.
+3. For an application rollback, select the previously recorded known-good Git
+   commit in Render. Do not run destructive database resets or schema downgrades.
+4. Database incompatibilities are forward-fixed under `docs/DATABASE_RUNBOOK.md`;
+   restore from a provider backup only with named owner approval recorded in
+   incident/runbook evidence.
+5. Keep deploy identifiers and redacted command output in
+   `docs/RELEASE_READINESS_RECORD.md` or the external release system. Never put
+   environment values, passwords, tokens, or database URLs in Git.
 
 ## Required Environment Variables
 
@@ -55,8 +77,7 @@ APP_ORIGIN=https://<service>.onrender.com
 AUTH_SECURE_COOKIES=true
 DEPLOYMENT_ENV=staging
 RENDER_STAGING_SINGLE_INSTANCE=true
-TRUST_PROXY_HEADERS=true
-TRUSTED_PROXY_PROVIDER=render
+TRUST_PROXY_HEADERS=false
 RATE_LIMIT_BACKEND=memory
 PORT=10000
 ```
@@ -76,7 +97,8 @@ import that file's contents, then add `DATABASE_URL`, `NEXTAUTH_SECRET`,
 `NEXTAUTH_URL`, and `APP_ORIGIN` separately. Choose **Save, rebuild, and
 deploy**. Existing dashboard variables override imported or Blueprint values,
 so remove stale values such as `PORT=3000`,
-`TRUSTED_PROXY_PROVIDER=cloudfront`, or `RATE_LIMIT_BACKEND=waf`.
+`TRUSTED_PROXY_PROVIDER=render`, `TRUSTED_PROXY_PROVIDER=cloudfront`, or
+`RATE_LIMIT_BACKEND=waf`.
 
 If deployment fails with `Invalid Render staging contract`, the log now lists
 every missing or incorrect non-secret setting. Correct those exact values
@@ -113,6 +135,9 @@ truncate, or local-demo seed against the staging database.
 - This profile is deliberately limited to one instance. Scaling it invalidates
   the memory rate-limit guarantee and must be blocked until Render Key Value or
   another reviewed shared rate-limit store is implemented.
+- All untrusted forwarded-address values map to the common application bucket.
+  This can rate-limit unrelated visitors under abuse and is an intentional
+  staging/demo trade-off, not a production control.
 - It is for staging/demo validation, not production traffic or production
   payment processing.
 - A missing or mismatched origin returns `403` for registration mutations. Set

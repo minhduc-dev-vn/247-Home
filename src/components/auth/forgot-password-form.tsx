@@ -31,7 +31,7 @@ export function ForgotPasswordForm() {
   if (complete) {
     return (
       <Alert title="Kiểm tra hộp thư" variant="success">
-        Nếu email hợp lệ, hướng dẫn đặt lại mật khẩu đã được gửi.
+        Nếu email hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi trong ít phút.
       </Alert>
     );
   }

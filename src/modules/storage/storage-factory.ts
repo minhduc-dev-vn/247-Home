@@ -33,27 +33,14 @@ const s3ConfigurationSchema = z
       });
   });
 
-export function createEvidenceStorage(
-  environment: Record<string, string | undefined> = process.env,
+function createS3Storage(
+  environment: Record<string, string | undefined>,
+  bucket: string | undefined,
 ): PrivateObjectStorage {
-  const provider =
-    environment.EVIDENCE_STORAGE_PROVIDER ??
-    (environment.NODE_ENV === 'production' ? undefined : 'local');
-
-  if (provider === 'local') {
-    if (environment.NODE_ENV === 'production')
-      throw new StorageConfigurationError(
-        'Local evidence storage is disabled in production.',
-      );
-    return new LocalStorageAdapter(undefined, environment.NODE_ENV);
-  }
-
-  if (provider !== 's3')
-    throw new StorageConfigurationError(
-      'EVIDENCE_STORAGE_PROVIDER must be s3 in production.',
-    );
-
-  const parsed = s3ConfigurationSchema.safeParse(environment);
+  const parsed = s3ConfigurationSchema.safeParse({
+    ...environment,
+    STORAGE_BUCKET: bucket,
+  });
   if (!parsed.success)
     throw new StorageConfigurationError(
       `Missing or invalid object storage configuration: ${parsed.error.issues
@@ -76,11 +63,66 @@ export function createEvidenceStorage(
   });
 }
 
+export function createEvidenceStorage(
+  environment: Record<string, string | undefined> = process.env,
+): PrivateObjectStorage {
+  const provider =
+    environment.EVIDENCE_STORAGE_PROVIDER ??
+    (environment.NODE_ENV === 'production' ? undefined : 'local');
+
+  if (provider === 'local') {
+    if (environment.NODE_ENV === 'production')
+      throw new StorageConfigurationError(
+        'Local evidence storage is disabled in production.',
+      );
+    return new LocalStorageAdapter(undefined, environment.NODE_ENV);
+  }
+
+  if (provider !== 's3')
+    throw new StorageConfigurationError(
+      'EVIDENCE_STORAGE_PROVIDER must be s3 in production.',
+    );
+
+  return createS3Storage(environment, environment.STORAGE_BUCKET);
+}
+
+export function createCatalogImageStorage(
+  environment: Record<string, string | undefined> = process.env,
+): PrivateObjectStorage {
+  const provider =
+    environment.CATALOG_IMAGE_STORAGE_PROVIDER ??
+    (environment.NODE_ENV === 'production' ? undefined : 'local');
+
+  if (provider === 'local') {
+    if (environment.NODE_ENV === 'production')
+      throw new StorageConfigurationError(
+        'Local catalog image storage is disabled in production.',
+      );
+    return new LocalStorageAdapter(undefined, environment.NODE_ENV);
+  }
+
+  if (provider !== 's3')
+    throw new StorageConfigurationError(
+      'CATALOG_IMAGE_STORAGE_PROVIDER must be s3 in production.',
+    );
+
+  return createS3Storage(
+    environment,
+    environment.CATALOG_IMAGE_STORAGE_BUCKET ?? environment.STORAGE_BUCKET,
+  );
+}
+
 let evidenceStorage: PrivateObjectStorage | undefined;
+let catalogImageStorage: PrivateObjectStorage | undefined;
 
 export function getEvidenceStorage(): PrivateObjectStorage {
   evidenceStorage ??= createEvidenceStorage();
   return evidenceStorage;
+}
+
+export function getCatalogImageStorage(): PrivateObjectStorage {
+  catalogImageStorage ??= createCatalogImageStorage();
+  return catalogImageStorage;
 }
 
 export function resetEvidenceStorageForTests(): void {
@@ -89,4 +131,12 @@ export function resetEvidenceStorageForTests(): void {
       'Storage singleton reset is restricted to tests.',
     );
   evidenceStorage = undefined;
+}
+
+export function resetCatalogImageStorageForTests(): void {
+  if (process.env.NODE_ENV !== 'test')
+    throw new StorageConfigurationError(
+      'Storage singleton reset is restricted to tests.',
+    );
+  catalogImageStorage = undefined;
 }

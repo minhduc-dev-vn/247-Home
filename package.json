@@ -17,15 +17,20 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "test:migration": "tsx scripts/test-operations-migration-upgrade.ts",
+    "test:migration": "tsx scripts/test-migration-upgrades.ts",
+    "test:migration:identity": "tsx scripts/test-password-reset-outbox-migration-upgrade.ts",
     "test:e2e": "playwright test",
     "test:e2e:demo": "playwright test --config=playwright.demo.config.ts",
     "test:e2e:staging": "playwright test --config=playwright.staging.config.ts",
+    "password-reset:deliver": "tsx scripts/deliver-password-reset-outbox.ts",
+    "orders:expire": "tsx scripts/expire-unpaid-orders.ts",
     "test:storage-server": "tsx tests/support/s3-compatible-test-server.ts",
     "audit:prod": "tsx scripts/audit-production-dependencies.ts",
     "verify:staging-rate-limit": "tsx scripts/verify-staging-rate-limit.ts",
     "verify:vnpay-config": "tsx scripts/verify-vnpay-configuration.ts",
     "payment:reconcile": "tsx scripts/payment-reconciliation-report.ts",
+    "catalog:media-audit": "tsx scripts/catalog-media-audit.ts",
+    "catalog:verify-deployed-media": "tsx scripts/verify-catalog-media-deployment.ts",
     "verify:database-invariants": "tsx scripts/verify-database-invariants.ts",
     "cleanup:operations-fixtures": "tsx scripts/cleanup-operations-fixtures.ts",
     "screenshots:animation": "tsx scripts/capture-animation-screenshots.ts",
@@ -43,9 +48,6 @@
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:seed:staging": "tsx prisma/seed.ts"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1087.0",

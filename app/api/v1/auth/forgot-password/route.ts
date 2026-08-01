@@ -1,13 +1,12 @@
 import { forgotPasswordSchema, requestPasswordReset } from '@/modules/identity';
 import { withJsonMutation } from '@/shared/http/api-handler';
-import {
-  createErrorResponse,
-  createSuccessResponse,
-} from '@/shared/http/response';
-import {
-  describeError,
-  logApplicationError,
-} from '@/shared/observability/logger';
+import { createSuccessResponse } from '@/shared/http/response';
+import { logApplicationError } from '@/shared/observability/logger';
+
+function safeErrorCode(error: unknown): string {
+  if (error instanceof Error) return error.name || 'UNEXPECTED_ERROR';
+  return 'UNKNOWN_ERROR';
+}
 
 export async function POST(request: Request) {
   return withJsonMutation(
@@ -22,16 +21,12 @@ export async function POST(request: Request) {
           requestId,
           route: '/api/v1/auth/forgot-password',
           category: 'password-reset-request',
-          ...describeError(error),
+          errorCode: safeErrorCode(error),
         });
-        return createErrorResponse(
-          'INTERNAL_ERROR',
-          'Khong the xu ly yeu cau.',
-          requestId,
-          500,
-        );
       }
-      return createSuccessResponse({ accepted: true }, requestId);
+      return createSuccessResponse({ accepted: true }, requestId, {
+        status: 202,
+      });
     },
   );
 }

@@ -226,6 +226,11 @@ export default async function ProductsPage({
                       ? catalogHref(query, { cursor: catalog.nextCursor })
                       : undefined
                   }
+                  previousHref={
+                    query.cursor
+                      ? catalogHref(query, { cursor: undefined })
+                      : undefined
+                  }
                 />
               </div>
             </div>

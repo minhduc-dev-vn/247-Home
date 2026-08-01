@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { PaymentMethod, PaymentStatus } from '@prisma/client';
+import {
+  PaymentMethod,
+  PaymentSessionStatus,
+  PaymentStatus,
+  PaymentWebhookOutcome,
+} from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { type IdentityActor } from '@/modules/identity';
@@ -139,6 +144,7 @@ function webhookFromPaymentUrl(
 beforeAll(() => {
   process.env.VNPAY_TMN_CODE = tmnCode;
   process.env.VNPAY_HASH_SECRET = secret;
+  process.env.VNPAY_PUBLIC_ENABLED = 'true';
   process.env.VNPAY_PAYMENT_URL =
     'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
   process.env.VNPAY_RETURN_URL = 'http://127.0.0.1:3000/api/v1/payment/return';
@@ -175,6 +181,130 @@ describe.sequential('online payment integration on PostgreSQL', () => {
           where: { paymentId: order.payment!.id },
         }),
       ).resolves.toBe(1);
+    });
+  });
+
+  it('allows only one simultaneous payable session across distinct keys', async () => {
+    await withFixture(async ({ actor, order }) => {
+      const input = { orderId: order.id, paymentMethod: 'VNPAY' as const };
+      const results = await Promise.allSettled([
+        createOnlinePaymentSession(
+          actor,
+          input,
+          'payment-key-247-home-active-a',
+          '127.0.0.1',
+          'req-active-a',
+        ),
+        createOnlinePaymentSession(
+          actor,
+          input,
+          'payment-key-247-home-active-b',
+          '127.0.0.1',
+          'req-active-b',
+        ),
+      ]);
+      expect(
+        results.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      const rejected = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+      expect(rejected?.reason).toMatchObject({
+        code: 'CONFLICT',
+        message: 'ACTIVE_PAYMENT_SESSION',
+      });
+      await expect(
+        prisma.paymentSession.findMany({
+          where: { paymentId: order.payment!.id },
+          select: { status: true },
+        }),
+      ).resolves.toEqual([{ status: PaymentSessionStatus.PENDING }]);
+      await expect(
+        prisma.payment.findUniqueOrThrow({ where: { id: order.payment!.id } }),
+      ).resolves.toMatchObject({
+        status: PaymentStatus.PROCESSING,
+        version: order.payment!.version + 1,
+      });
+      await expect(
+        prisma.auditLog.count({
+          where: {
+            action: 'payment.session_created',
+            targetId: order.payment!.id,
+          },
+        }),
+      ).resolves.toBe(1);
+    });
+  });
+
+  it('expires a stale session before creating one replacement session', async () => {
+    await withFixture(async ({ actor, order }) => {
+      const first = await createOnlinePaymentSession(
+        actor,
+        { orderId: order.id, paymentMethod: 'VNPAY' },
+        'payment-key-247-home-expire-a',
+        '127.0.0.1',
+        'req-expire-a',
+      );
+      await prisma.paymentSession.update({
+        where: { id: first.payment.sessionId },
+        data: { expiresAt: new Date(Date.now() - 1_000) },
+      });
+
+      const replacement = await createOnlinePaymentSession(
+        actor,
+        { orderId: order.id, paymentMethod: 'VNPAY' },
+        'payment-key-247-home-expire-b',
+        '127.0.0.1',
+        'req-expire-b',
+      );
+      expect(replacement.payment.sessionId).not.toBe(first.payment.sessionId);
+      await expect(
+        prisma.paymentSession.findMany({
+          where: { paymentId: order.payment!.id },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, status: true },
+        }),
+      ).resolves.toEqual([
+        { id: first.payment.sessionId, status: PaymentSessionStatus.EXPIRED },
+        {
+          id: replacement.payment.sessionId,
+          status: PaymentSessionStatus.PENDING,
+        },
+      ]);
+      await expect(
+        prisma.payment.findUniqueOrThrow({ where: { id: order.payment!.id } }),
+      ).resolves.toMatchObject({
+        status: PaymentStatus.PROCESSING,
+        version: order.payment!.version + 2,
+      });
+    });
+  });
+
+  it('fails closed when public VNPay issuance is disabled', async () => {
+    await withFixture(async ({ actor, order }) => {
+      process.env.VNPAY_PUBLIC_ENABLED = 'false';
+      try {
+        await expect(
+          createOnlinePaymentSession(
+            actor,
+            { orderId: order.id, paymentMethod: 'VNPAY' },
+            'payment-key-247-home-disabled',
+            '127.0.0.1',
+            'req-disabled',
+          ),
+        ).rejects.toMatchObject({
+          code: 'CONFLICT',
+          message: 'ONLINE_PAYMENT_UNAVAILABLE',
+        });
+        await expect(
+          prisma.paymentSession.count({
+            where: { paymentId: order.payment!.id },
+          }),
+        ).resolves.toBe(0);
+      } finally {
+        process.env.VNPAY_PUBLIC_ENABLED = 'true';
+      }
     });
   });
 
@@ -249,7 +379,97 @@ describe.sequential('online payment integration on PostgreSQL', () => {
         prisma.paymentWebhookEvent.count({
           where: { paymentId: order.payment!.id },
         }),
-      ).resolves.toBe(0);
+      ).resolves.toBe(1);
+      await expect(
+        prisma.paymentWebhookEvent.findFirstOrThrow({
+          where: { paymentId: order.payment!.id },
+          select: { outcome: true },
+        }),
+      ).resolves.toEqual({ outcome: PaymentWebhookOutcome.REJECTED });
+    });
+  });
+
+  it('records a currency mismatch as a rejected reconciliation event', async () => {
+    await withFixture(async ({ actor, order }) => {
+      const created = await createOnlinePaymentSession(
+        actor,
+        { orderId: order.id, paymentMethod: 'VNPAY' },
+        'payment-key-247-home-currency',
+        '127.0.0.1',
+        'req-create',
+      );
+      const mismatch = webhookFromPaymentUrl(created.payment.paymentUrl, {
+        vnp_CurrCode: 'USD',
+      });
+      await expect(
+        processVnpayWebhook(mismatch, 'req-currency'),
+      ).resolves.toEqual({ rspCode: '04', message: 'Invalid amount' });
+      await expect(
+        prisma.payment.findUniqueOrThrow({ where: { id: order.payment!.id } }),
+      ).resolves.toMatchObject({ status: PaymentStatus.PROCESSING });
+      await expect(
+        prisma.paymentWebhookEvent.findFirstOrThrow({
+          where: { paymentId: order.payment!.id },
+          select: { currency: true, outcome: true },
+        }),
+      ).resolves.toEqual({
+        currency: 'USD',
+        outcome: PaymentWebhookOutcome.REJECTED,
+      });
+    });
+  });
+
+  it('records a second provider transaction for a paid order without duplicate audit', async () => {
+    await withFixture(async ({ actor, order }) => {
+      const created = await createOnlinePaymentSession(
+        actor,
+        { orderId: order.id, paymentMethod: 'VNPAY' },
+        'payment-key-247-home-duplicate-transaction',
+        '127.0.0.1',
+        'req-create',
+      );
+      const first = webhookFromPaymentUrl(created.payment.paymentUrl, {
+        vnp_TransactionNo: 'TXN-FIRST-247',
+      });
+      const second = webhookFromPaymentUrl(created.payment.paymentUrl, {
+        vnp_TransactionNo: 'TXN-SECOND-247',
+      });
+      await expect(processVnpayWebhook(first, 'req-first')).resolves.toEqual({
+        rspCode: '00',
+        message: 'Confirm Success',
+      });
+      await expect(processVnpayWebhook(second, 'req-second')).resolves.toEqual({
+        rspCode: '02',
+        message: 'Order already confirmed',
+      });
+      await expect(
+        prisma.payment.findUniqueOrThrow({ where: { id: order.payment!.id } }),
+      ).resolves.toMatchObject({
+        providerTransactionId: 'TXN-FIRST-247',
+        status: PaymentStatus.PAID,
+        version: order.payment!.version + 2,
+      });
+      await expect(
+        prisma.paymentWebhookEvent.findMany({
+          where: { paymentId: order.payment!.id },
+          orderBy: { receivedAt: 'asc' },
+          select: { outcome: true, providerTransactionId: true },
+        }),
+      ).resolves.toEqual([
+        {
+          outcome: PaymentWebhookOutcome.PROCESSED,
+          providerTransactionId: 'TXN-FIRST-247',
+        },
+        {
+          outcome: PaymentWebhookOutcome.DUPLICATE,
+          providerTransactionId: 'TXN-SECOND-247',
+        },
+      ]);
+      await expect(
+        prisma.auditLog.count({
+          where: { targetId: order.payment!.id, action: 'payment.vnpay_paid' },
+        }),
+      ).resolves.toBe(1);
     });
   });
 

@@ -313,6 +313,15 @@ Constraint/index:
 
 ### 5.8 `product_images`
 
+> **Current implementation note (2026-08-01):** the Prisma schema and applied
+> catalog migration use `storage_key`, `mime_type`, and `byte_size` rather than
+> a public `url`. `storage_key` is a private logical key, never a filesystem
+> path or provider URL. New persisted catalog images use the generated
+> `catalog-images/<uuid>.<extension>` key shape and are served through the
+> application only when their product is active. The older URL-only wording in
+> this historical design section is superseded by
+> [`OBJECT_STORAGE_RUNBOOK.md`](OBJECT_STORAGE_RUNBOOK.md).
+
 Metadata ảnh sản phẩm.
 
 | Cột | Kiểu | Null | Ghi chú |

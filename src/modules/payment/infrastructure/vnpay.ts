@@ -75,6 +75,20 @@ export function getVnpayConfig(
   };
 }
 
+// Issuing new hosted-payment links is an explicit operational feature gate.
+// Existing signed IPNs must continue to settle after the gate is disabled.
+export function isVnpayPubliclyEnabled(
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (environment.VNPAY_PUBLIC_ENABLED !== 'true') return false;
+  try {
+    getVnpayConfig(environment);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function encode(value: string): string {
   return encodeURIComponent(value).replace(/%20/g, '+');
 }

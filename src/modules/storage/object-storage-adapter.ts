@@ -11,7 +11,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {
   assertEvidenceStorageKey,
   createEvidenceStorageKey,
-  maximumEvidenceBytes,
+  maximumBytesForStorageKey,
   validateEvidenceUpload,
 } from '@/modules/storage/evidence-validation';
 import {
@@ -146,6 +146,7 @@ export class S3ObjectStorageAdapter implements PrivateObjectStorage {
 
   async download(storageKey: string): Promise<Buffer | null> {
     const safeKey = assertEvidenceStorageKey(storageKey);
+    const maximumBytes = maximumBytesForStorageKey(safeKey);
     try {
       const response = await this.client.send(
         new GetObjectCommand({ Bucket: this.config.bucket, Key: safeKey }),
@@ -153,11 +154,11 @@ export class S3ObjectStorageAdapter implements PrivateObjectStorage {
       if (!response.Body) return null;
       if (
         response.ContentLength !== undefined &&
-        response.ContentLength > maximumEvidenceBytes
+        response.ContentLength > maximumBytes
       )
         throw new StorageProviderError('Stored evidence is oversized.');
       const content = Buffer.from(await response.Body.transformToByteArray());
-      if (content.length > maximumEvidenceBytes)
+      if (content.length > maximumBytes)
         throw new StorageProviderError('Stored evidence is oversized.');
       return content;
     } catch (error: unknown) {

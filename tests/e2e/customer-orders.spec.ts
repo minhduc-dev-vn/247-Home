@@ -1,9 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
+import {
+  AppointmentStatus,
+  InventoryDisposition,
+  OrderStatus,
+  PaymentStatus,
+} from '@prisma/client';
 
 import {
   createCustomerOrdersFixture,
   customerOrdersFixturePassword,
 } from '../fixtures/customer-orders';
+import { prisma } from '@/shared/db/client';
 
 async function signIn(page: Page, email: string) {
   await page.goto('/login');
@@ -96,6 +103,87 @@ test('customer order detail renders snapshot, lifecycle, payment and installatio
   }
 });
 
+test('customer cancels an eligible pending order and releases its reservation and appointment slot', async ({
+  page,
+}) => {
+  const fixture = await createCustomerOrdersFixture();
+  try {
+    await signIn(page, fixture.owner.email);
+    await page.goto(`/orders/${fixture.orders.cancellable.id}`);
+
+    await page.getByRole('button', { name: 'Hủy đơn hàng' }).click();
+    await page
+      .getByLabel('Lý do hủy đơn')
+      .fill('Không còn nhu cầu lắp đặt tại thời điểm này.');
+    await page.getByRole('button', { name: 'Xác nhận hủy đơn' }).click();
+
+    await expect(page.getByText('Đã hủy').first()).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Hủy đơn hàng' }),
+    ).toHaveCount(0);
+
+    await expect
+      .poll(async () => {
+        const [order, inventory, allocation, appointment, auditCount] =
+          await Promise.all([
+            prisma.order.findUniqueOrThrow({
+              where: { id: fixture.orders.cancellable.id },
+              select: { status: true, inventoryStatus: true, version: true },
+            }),
+            prisma.inventory.findUniqueOrThrow({
+              where: { productVariantId: fixture.variantId },
+              select: { reserved: true },
+            }),
+            prisma.inventoryAllocation.findUniqueOrThrow({
+              where: { orderItemId: fixture.orders.cancellable.items[0].id },
+              select: { status: true, releasedAt: true },
+            }),
+            prisma.installationAppointment.findUniqueOrThrow({
+              where: { orderId: fixture.orders.cancellable.id },
+              select: {
+                status: true,
+                capacityReleasedAt: true,
+                slot: { select: { bookedCount: true } },
+                order: { select: { payment: { select: { status: true } } } },
+              },
+            }),
+            prisma.auditLog.count({
+              where: {
+                action: 'order.cancel',
+                targetId: fixture.orders.cancellable.id,
+              },
+            }),
+          ]);
+        return {
+          allocationReleased: allocation.releasedAt instanceof Date,
+          allocationStatus: allocation.status,
+          appointmentReleased: appointment.capacityReleasedAt instanceof Date,
+          appointmentStatus: appointment.status,
+          auditCount,
+          inventoryReserved: inventory.reserved,
+          orderStatus: order.status,
+          orderVersion: order.version,
+          paymentStatus: appointment.order.payment?.status,
+          slotBookedCount: appointment.slot.bookedCount,
+        };
+      })
+      .toEqual({
+        allocationReleased: true,
+        allocationStatus: InventoryDisposition.RELEASED,
+        appointmentReleased: true,
+        appointmentStatus: AppointmentStatus.CANCELLED,
+        auditCount: 1,
+        inventoryReserved: 0,
+        orderStatus: OrderStatus.CANCELLED,
+        orderVersion: 2,
+        paymentStatus: PaymentStatus.CANCELLED,
+        slotBookedCount: 0,
+      });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test('another customer receives not found without order data leakage', async ({
   page,
 }) => {
@@ -109,6 +197,49 @@ test('another customer receives not found without order data leakage', async ({
     expect(await response.text()).not.toContain(
       fixture.orders.foreign.orderNumber,
     );
+
+    const cancellation = await page.request.post(
+      `/api/v1/orders/${fixture.orders.foreign.id}/actions/cancel`,
+      {
+        data: {
+          expectedVersion: 1,
+          reason: 'Attempt to access another customer order',
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: new URL(page.url()).origin,
+        },
+      },
+    );
+    expect(cancellation.status()).toBe(404);
+    expect(await cancellation.text()).not.toContain(
+      fixture.orders.foreign.orderNumber,
+    );
+
+    const adminMutation = await page.request.post(
+      `/api/v1/admin/orders/${fixture.orders.cancellable.id}/actions`,
+      {
+        data: {
+          action: 'cancel',
+          expectedVersion: 1,
+          reason: 'Customer must not access the operations endpoint',
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: new URL(page.url()).origin,
+        },
+      },
+    );
+    expect(adminMutation.status()).toBe(403);
+    await expect(
+      prisma.order.findUniqueOrThrow({
+        where: { id: fixture.orders.cancellable.id },
+        select: { status: true, version: true },
+      }),
+    ).resolves.toEqual({
+      status: OrderStatus.PENDING_CONFIRMATION,
+      version: 1,
+    });
 
     await page.goto(`/orders/${fixture.orders.foreign.id}`);
     await expect(

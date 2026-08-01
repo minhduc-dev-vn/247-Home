@@ -36,7 +36,8 @@ function getRenderStagingContractIssues(
     if (actual !== expected) issues.push(`${key}=${expected}`);
   };
 
-  requireValue('RENDER', environment.RENDER, 'true (set automatically)');
+  if (environment.RENDER !== 'true')
+    issues.push('RENDER=true (set automatically)');
   requireValue('DEPLOYMENT_ENV', parsed.DEPLOYMENT_ENV, 'staging');
   requireValue(
     'RENDER_STAGING_SINGLE_INSTANCE',
@@ -44,12 +45,9 @@ function getRenderStagingContractIssues(
     'true',
   );
   requireValue('RATE_LIMIT_BACKEND', parsed.RATE_LIMIT_BACKEND, 'memory');
-  requireValue('TRUST_PROXY_HEADERS', parsed.TRUST_PROXY_HEADERS, 'true');
-  requireValue(
-    'TRUSTED_PROXY_PROVIDER',
-    parsed.TRUSTED_PROXY_PROVIDER,
-    'render',
-  );
+  requireValue('TRUST_PROXY_HEADERS', parsed.TRUST_PROXY_HEADERS, 'false');
+  if (parsed.TRUSTED_PROXY_PROVIDER !== undefined)
+    issues.push('TRUSTED_PROXY_PROVIDER=unset');
 
   return issues;
 }
@@ -92,8 +90,8 @@ export function parseServerEnvironment(
     parsed.DEPLOYMENT_ENV === 'staging' &&
     parsed.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
     parsed.RATE_LIMIT_BACKEND === 'memory' &&
-    parsed.TRUST_PROXY_HEADERS === 'true' &&
-    parsed.TRUSTED_PROXY_PROVIDER === 'render';
+    parsed.TRUST_PROXY_HEADERS === 'false' &&
+    parsed.TRUSTED_PROXY_PROVIDER === undefined;
   if (
     environment.NODE_ENV === 'production' &&
     environment.NEXT_PHASE !== 'phase-production-build' &&

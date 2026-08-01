@@ -30,7 +30,7 @@ deployment was performed while creating this record.
 
 - Customer order/product/warranty pagination changes.
 - Query-schema tracking-parameter changes and their tests.
-- `ISSUES.md`, which is a separate historical working document.
+- The superseded `ISSUES.md` working draft, which was intentionally not retained.
 - Any `.env`, external credential, generated output, test trace, Docker volume,
   or provider configuration.
 

@@ -22,12 +22,13 @@ import {
   orderStatusPresentation,
   paymentMethodLabels,
 } from '@/components/commerce/order-status';
+import { OrderCancellationAction } from '@/components/commerce/order-cancellation';
 import { Container } from '@/components/layout/container';
 import { Breadcrumb } from '@/components/navigation/breadcrumb';
 import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { getOrder } from '@/modules/commerce';
+import { getAvailableCustomerOrderActions, getOrder } from '@/modules/commerce';
 import { requirePageActor } from '@/shared/auth/server';
 import { formatServiceDateTime } from '@/shared/date/service-time';
 import { formatVnd } from '@/shared/money/format-vnd';
@@ -39,8 +40,14 @@ export default async function OrderPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const order = await getOrder(await requirePageActor(), (await params).id);
+  const actor = await requirePageActor();
+  const orderId = (await params).id;
+  const order = await getOrder(actor, orderId);
   if (!order) notFound();
+
+  const customerActions = actor.roles.includes('CUSTOMER')
+    ? await getAvailableCustomerOrderActions(actor, orderId)
+    : null;
 
   const status = orderStatusPresentation[order.status];
 
@@ -320,6 +327,14 @@ export default async function OrderPage({
                   </div>
                 </CardHeader>
                 <CardContent className="grid gap-3">
+                  {customerActions?.actions.some(
+                    (action) => action.action === 'cancel',
+                  ) ? (
+                    <OrderCancellationAction
+                      expectedVersion={customerActions.version}
+                      orderId={order.id}
+                    />
+                  ) : null}
                   {order.appointment ? (
                     <Link
                       className={buttonVariants({ intent: 'primary' })}

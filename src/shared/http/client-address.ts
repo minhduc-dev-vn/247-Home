@@ -11,11 +11,6 @@ function cloudFrontAddress(value: string | null): string | null {
   return isIP(normalized) ? normalized : null;
 }
 
-function renderAddress(value: string | null): string | null {
-  if (!value) return null;
-  return cloudFrontAddress(value.split(',', 1)[0]?.trim() ?? null);
-}
-
 export function trustedClientAddress(
   request: Request,
   fallback = 'untrusted-client',
@@ -25,7 +20,5 @@ export function trustedClientAddress(
     return (
       cloudFrontAddress(request.headers.get('x-247-client-address')) ?? fallback
     );
-  if (process.env.TRUSTED_PROXY_PROVIDER === 'render')
-    return renderAddress(request.headers.get('x-forwarded-for')) ?? fallback;
   return fallback;
 }

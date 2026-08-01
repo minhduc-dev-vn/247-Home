@@ -64,7 +64,16 @@ export default async function WarrantyPage({
   const raw = await searchParams;
   const cursor = optionalValue(raw.cursor);
   const status = parseStatus(optionalValue(raw.status));
-  const query = warrantyListSchema.parse({ cursor, limit: pageSize, status });
+  // A truncated or stale cursor from a shared link falls back to page one
+  // instead of throwing the visitor into the error boundary.
+  const parsedQuery = warrantyListSchema.safeParse({
+    cursor,
+    limit: pageSize,
+    status,
+  });
+  const query = parsedQuery.success
+    ? parsedQuery.data
+    : warrantyListSchema.parse({ limit: pageSize, status });
   const [requests, eligibleItems] = await Promise.all([
     listWarrantyRequests(actor, query),
     listEligibleWarrantyItems(actor),

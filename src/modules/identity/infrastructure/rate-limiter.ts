@@ -63,6 +63,15 @@ const wafDelegatedRateLimiter: RateLimiter = {
 
 let configuredRateLimiter: RateLimiter | undefined;
 
+function hasCloudFrontWafContract(): boolean {
+  return (
+    process.env.NODE_ENV === 'production' &&
+    process.env.RATE_LIMIT_BACKEND === 'waf' &&
+    process.env.TRUST_PROXY_HEADERS === 'true' &&
+    process.env.TRUSTED_PROXY_PROVIDER === 'cloudfront'
+  );
+}
+
 function isRenderSingleInstanceStaging(): boolean {
   return (
     process.env.NODE_ENV === 'production' &&
@@ -70,15 +79,17 @@ function isRenderSingleInstanceStaging(): boolean {
     process.env.DEPLOYMENT_ENV === 'staging' &&
     process.env.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
     process.env.RATE_LIMIT_BACKEND === 'memory' &&
-    process.env.TRUST_PROXY_HEADERS === 'true' &&
-    process.env.TRUSTED_PROXY_PROVIDER === 'render'
+    process.env.TRUST_PROXY_HEADERS === 'false' &&
+    process.env.TRUSTED_PROXY_PROVIDER === undefined
   );
 }
 
 function environmentRateLimiter(): RateLimiter {
   if (process.env.RATE_LIMIT_BACKEND === 'waf') {
-    if (process.env.NODE_ENV !== 'production')
-      throw new Error('The WAF rate-limit backend is production-only.');
+    if (!hasCloudFrontWafContract())
+      throw new Error(
+        'The WAF rate-limit backend requires the CloudFront trusted ingress contract.',
+      );
     return wafDelegatedRateLimiter;
   }
   if (

@@ -46,6 +46,22 @@ test('customer creates VNPay payment and sees verified webhook result', async ({
       id: appointment.paymentId,
       status: 'PROCESSING',
     });
+    const secondSession = await page.evaluate(async (orderId) => {
+      const response = await fetch('/api/v1/payment/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': `e2e-vnpay-second-${orderId}`,
+        },
+        body: JSON.stringify({ orderId, paymentMethod: 'VNPAY' }),
+      });
+      return {
+        status: response.status,
+        payload: (await response.json()) as { error?: { code?: string } },
+      };
+    }, appointment.orderId);
+    expect(secondSession.status).toBe(409);
+    expect(secondSession.payload.error?.code).toBe('CONFLICT');
     const redirect = new URL(created.payload.data.paymentUrl);
     expect(redirect.origin).toBe('https://sandbox.vnpayment.vn');
     expect(redirect.searchParams.get('vnp_SecureHash')).toMatch(

@@ -65,14 +65,13 @@ export default async function OrdersPage({
   const parsedQuery = orderListQuerySchema.safeParse({
     cursor,
     limit: pageSize,
+    status,
   });
   const query = parsedQuery.success
     ? parsedQuery.data
-    : orderListQuerySchema.parse({ limit: pageSize });
+    : orderListQuerySchema.parse({ limit: pageSize, status });
   const result = await listOrders(await requirePageActor(), query);
-  const visibleOrders = status
-    ? result.items.filter((order) => order.status === status)
-    : result.items;
+  const visibleOrders = result.items;
 
   return (
     <main>
@@ -160,7 +159,7 @@ export default async function OrdersPage({
                   </form>
                 ) : null}
                 <p className="mt-4 border-t pt-3 text-xs leading-5 text-[var(--muted)]">
-                  Bộ lọc áp dụng cho các đơn trên trang hiện tại.
+                  Bộ lọc áp dụng cho toàn bộ đơn hàng của bạn.
                 </p>
               </div>
             </aside>
@@ -174,7 +173,7 @@ export default async function OrdersPage({
                       : 'Tất cả đơn hàng'}
                   </h2>
                   <p className="mt-1 text-sm text-[var(--muted)]" role="status">
-                    {visibleOrders.length} đơn phù hợp trên trang này
+                    {visibleOrders.length} đơn trên trang này
                   </p>
                 </div>
                 {cursor ? <Badge variant="info">Trang tiếp theo</Badge> : null}
@@ -298,9 +297,9 @@ export default async function OrdersPage({
                     status ? (
                       <Link
                         className={buttonVariants({ intent: 'secondary' })}
-                        href={ordersHref({ cursor, status: undefined })}
+                        href={ordersHref({ status: undefined })}
                       >
-                        Xem tất cả trên trang này
+                        Xem tất cả đơn hàng
                       </Link>
                     ) : (
                       <Link
@@ -314,7 +313,7 @@ export default async function OrdersPage({
                   className="mt-6 rounded-lg border border-dashed bg-[var(--surface)]"
                   description={
                     status
-                      ? 'Không có đơn phù hợp với trạng thái đã chọn trên trang này.'
+                      ? 'Bạn chưa có đơn nào ở trạng thái đã chọn.'
                       : 'Khi hoàn tất mua hàng, đơn của bạn sẽ xuất hiện tại đây.'
                   }
                   icon={<PackageSearch aria-hidden="true" className="size-5" />}

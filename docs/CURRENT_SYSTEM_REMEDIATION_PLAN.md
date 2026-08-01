@@ -268,6 +268,23 @@ Make rate limiting real for the actual hosting topology, rather than relying on 
 - Spoofed forwarded client addresses cannot choose another user's limiter bucket.
 - Login/register/forgot-password/mutations retain expected safe error contracts.
 
+### Repository execution status - 2026-08-01
+
+Repository remediation is complete and recorded in
+[`PHASE_6_EXECUTION_REPORT.md`](PHASE_6_EXECUTION_REPORT.md). The application
+now trusts a client address only through the CloudFront overwrite contract;
+the single-instance Render staging exception fails closed to an untrusted common
+bucket and no longer reads `X-Forwarded-For`. The bounded probe, static ingress
+checks, and HTTP-contract tests are implemented and all local migration, lint,
+typecheck, unit, integration, E2E, and build gates passed.
+
+The acceptance criteria above remain **pending owner-run AWS staging evidence**:
+CloudFront/WAF must be in block mode, the origin must be confirmed inaccessible,
+two ECS tasks must be observed, and the bounded probes must record 429 plus
+redacted WAF/CloudWatch evidence. No AWS account, approved staging URL, Web ACL
+access, or release-owner approval was available in this checkout. Do not mark
+H-04 closed from repository tests alone.
+
 ## 9. Phase 7 - Quality Gates, Documentation, and Operational Evidence
 
 ### Required actions
@@ -308,6 +325,23 @@ pnpm build
 - CI fails on lint, typecheck, unit, integration, E2E, build, dependency audit, and formatting.
 - A release reviewer can reproduce the deployed service from one Git SHA and documented Render configuration.
 
+### Repository execution status - 2026-08-01
+
+The repository/local part of Phase 7 is complete and is recorded in
+[`PHASE_7_EXECUTION_REPORT.md`](PHASE_7_EXECUTION_REPORT.md) and
+[`RELEASE_READINESS_RECORD.md`](RELEASE_READINESS_RECORD.md). Local Docker
+PostgreSQL and MinIO were retained, `prisma migrate deploy` reported no pending
+migration, the idempotent development seed completed, and the full current
+quality suite passed. CI now enforces `pnpm format:check`, and Prisma now uses
+`prisma.config.ts` rather than the deprecated package-level configuration.
+
+This is deliberately **not** a claim of an immutable release artifact or a
+deployed service. The checked worktree contains remediation changes that were
+not automatically committed by this task. A release owner must review, commit,
+tag, and rerun the canonical gates from that immutable commit before a release
+review can use the final acceptance criterion. AWS/CloudFront/WAF and other
+provider evidence are deferred by owner request and remain external gates.
+
 ## 10. Finding-to-Plan Matrix
 
 | Audit finding | Remediation phase | Required proof | Status now |
@@ -317,16 +351,16 @@ pnpm build
 | H-01 Branch/deployment drift | Phases 1 and 2.1 | Render SHA equals reviewed release SHA | OPEN |
 | H-02 Liveness misreported as readiness | P0-05 and Phase 1 | `/api/ready` health configuration and 503 drill | OPEN |
 | H-03 Multiple active VNPay sessions | Phase 4 | One-active-session concurrency + sandbox matrix | OPEN |
-| H-04 Unverified distributed limiter | Phase 6 | Staging 429 and trusted-proxy evidence | OPEN |
-| H-05 Production product-media failure | Phase 5 | Static/persisted image deploy + authorization test | OPEN |
+| H-04 Unverified distributed limiter | Phase 6 | Staging 429 and trusted-proxy evidence | REPOSITORY HARDENED; LIVE AWS STAGING EVIDENCE PENDING OWNER |
+| H-05 Production product-media failure | Phase 5 | Static/persisted image deploy + authorization test | REPOSITORY FIXED; REAL STAGING PROVIDER EVIDENCE PENDING OWNER |
 | H-06 Exposed database credential | P0-01 | Rotation and old-credential invalidation | OPEN |
-| M-01 Unverified DB/E2E gates | Phase 7 | Fresh canonical gate results | OPEN |
-| M-02 Format gate omitted | Phase 7 | `format:check` green and required by CI | OPEN |
-| M-03 Stale documentation | Phase 7 | Revision-specific canonical docs | OPEN |
-| M-04 Catalog seed ambiguity | Phase 5 / Phase 7 | Explicit non-destructive seed policy | OPEN |
+| M-01 Unverified DB/E2E gates | Phase 7 | Fresh canonical gate results | REPOSITORY VERIFIED; immutable release/deploy evidence pending owner |
+| M-02 Format gate omitted | Phase 7 | `format:check` green and required by CI | FIXED IN REPOSITORY/CI |
+| M-03 Stale documentation | Phase 7 | Revision-specific canonical docs | FIXED FOR CURRENT RECORD; historical reports retained |
+| M-04 Catalog seed ambiguity | Phase 5 / Phase 7 | Explicit non-destructive seed policy | PHASE 5 POLICY IMPLEMENTED; RELEASE-OWNER APPROVAL PENDING |
 | M-05 Reset diagnostics gap | Phase 2.2 | Request-ID logging regression test | OPEN |
 | M-06 IPN contract unverified | Phase 4 | Sandbox and reconciliation evidence | OPEN |
-| M-07 Prisma config deprecation | Phase 7 | Planned `prisma.config.ts` migration before Prisma 7 | OPEN |
+| M-07 Prisma config deprecation | Phase 7 | Planned `prisma.config.ts` migration before Prisma 7 | FIXED; `prisma.config.ts` is the canonical Prisma CLI configuration |
 
 ## 11. Release Sequence and Rollback
 

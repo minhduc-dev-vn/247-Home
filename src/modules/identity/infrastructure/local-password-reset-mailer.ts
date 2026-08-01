@@ -5,17 +5,12 @@ import { join } from 'node:path';
 type PasswordResetEmail = {
   to: string;
   resetUrl: string;
+  deliveryId?: string;
 };
 
 export async function sendLocalPasswordResetEmail(
   email: PasswordResetEmail,
 ): Promise<void> {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'The local password reset mailer is unavailable in production.',
-    );
-  }
-
   const outboxDirectory = join(process.cwd(), '.local-outbox');
   const filename = `${Date.now()}-${randomUUID()}.json`;
   await mkdir(outboxDirectory, { recursive: true });

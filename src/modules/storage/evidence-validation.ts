@@ -4,10 +4,17 @@ import path from 'node:path';
 import {
   StorageValidationError,
   type EvidenceMimeType,
+  type PrivateImagePurpose,
   type StorageUploadInput,
 } from '@/modules/storage/storage-interface';
 
 export const maximumEvidenceBytes = 5 * 1024 * 1024;
+export const maximumCatalogImageBytes = 2 * 1024 * 1024;
+
+const catalogImageStorageKeyPattern =
+  /^catalog-images\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/;
+const evidenceStorageKeyPattern =
+  /^(?:(?:installation|warranty)-evidence|catalog-images)\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/;
 
 const formats: Record<
   EvidenceMimeType,
@@ -40,6 +47,14 @@ export type ValidatedEvidenceUpload = {
   extension: '.jpg' | '.png' | '.webp';
   checksumSha256: string;
 };
+
+function maximumBytesForPurpose(
+  purpose: PrivateImagePurpose | undefined,
+): number {
+  return purpose === 'catalog'
+    ? maximumCatalogImageBytes
+    : maximumEvidenceBytes;
+}
 
 function isStrictBase64(value: string): boolean {
   return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
@@ -80,7 +95,7 @@ export function validateEvidenceUpload(
     content.subarray(8, 12).equals(Buffer.from('WEBP'));
   if (
     content.length === 0 ||
-    content.length > maximumEvidenceBytes ||
+    content.length > maximumBytesForPurpose(input.purpose) ||
     !validSignature ||
     !validWebp
   )
@@ -98,18 +113,34 @@ export function createEvidenceStorageKey(
   extension: string,
   purpose: StorageUploadInput['purpose'] = 'installation',
 ): string {
-  if (purpose !== 'installation' && purpose !== 'warranty') {
-    throw new StorageValidationError('Invalid evidence purpose.');
+  if (
+    purpose !== 'catalog' &&
+    purpose !== 'installation' &&
+    purpose !== 'warranty'
+  ) {
+    throw new StorageValidationError('Invalid private image purpose.');
   }
-  return `${purpose}-evidence/${randomUUID()}${extension}`;
+  const prefix =
+    purpose === 'catalog' ? 'catalog-images' : `${purpose}-evidence`;
+  return `${prefix}/${randomUUID()}${extension}`;
 }
 
 export function assertEvidenceStorageKey(storageKey: string): string {
-  if (
-    !/^(installation|warranty)-evidence\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/.test(
-      storageKey,
-    )
-  )
+  if (!evidenceStorageKeyPattern.test(storageKey))
     throw new StorageValidationError('Invalid storage key.');
   return storageKey;
 }
+
+export function isCatalogImageStorageKey(storageKey: string): boolean {
+  return catalogImageStorageKeyPattern.test(storageKey);
+}
+
+export function maximumBytesForStorageKey(storageKey: string): number {
+  return isCatalogImageStorageKey(assertEvidenceStorageKey(storageKey))
+    ? maximumCatalogImageBytes
+    : maximumEvidenceBytes;
+}
+
+export const validatePrivateImageUpload = validateEvidenceUpload;
+export const createPrivateImageStorageKey = createEvidenceStorageKey;
+export const assertPrivateImageStorageKey = assertEvidenceStorageKey;

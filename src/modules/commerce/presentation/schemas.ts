@@ -1,4 +1,4 @@
-import { PaymentMethod } from '@prisma/client';
+import { OrderStatus, PaymentMethod } from '@prisma/client';
 import { z } from 'zod';
 
 import { orderActions } from '@/modules/commerce/domain/order-transition';
@@ -54,6 +54,9 @@ export const checkoutInputSchema = z
     slotId: cuid.nullable().optional(),
   })
   .strict();
+// Query schemas strip unknown keys instead of rejecting them: shared links
+// arrive carrying tracking parameters (fbclid, utm_*, gclid) that neither the
+// user nor this application put there. Body schemas stay strict.
 export const slotQuerySchema = z
   .object({
     serviceAreaId: cuid,
@@ -62,7 +65,7 @@ export const slotQuerySchema = z
     cursor: cuid.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
-  .strict()
+  .strip()
   .refine((value) => value.fromDate <= value.toDate)
   .refine(
     (value) =>
@@ -76,11 +79,23 @@ export const addressListQuerySchema = z
     cursor: cuid.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
-  .strict();
-export const orderListQuerySchema = addressListQuerySchema;
+  .strip();
+export const orderListQuerySchema = z
+  .object({
+    cursor: cuid.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    status: z.nativeEnum(OrderStatus).optional(),
+  })
+  .strip();
 export const orderActionSchema = z
   .object({
     action: z.enum(orderActions),
+    expectedVersion: z.coerce.number().int().positive(),
+    reason: z.string().trim().min(3).max(300),
+  })
+  .strict();
+export const customerOrderCancelSchema = z
+  .object({
     expectedVersion: z.coerce.number().int().positive(),
     reason: z.string().trim().min(3).max(300),
   })

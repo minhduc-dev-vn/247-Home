@@ -131,6 +131,25 @@ Query: `category`, `q`, `minPrice`, `maxPrice`, `cursor`, `limit`.
 
 Response item chỉ gồm product active, variant active, ảnh public, giá server và availability không cam kết. Không trả inventory counters.
 
+### Product image delivery and upload
+
+`GET /api/v1/product-images/{id}` is a public read endpoint only for an image
+whose parent product is `ACTIVE`. It streams image bytes from private storage
+with the stored MIME type, `X-Content-Type-Options: nosniff`, and public image
+cache headers. It returns `404` for an unknown image, a draft/archived product,
+or an unavailable object. It never returns a storage key, filesystem path,
+bucket name, provider endpoint, or presigned URL.
+
+`POST /api/v1/admin/products/{id}/images` requires catalog access, a permitted
+origin, JSON content type, and the catalog-image rate-limit scope. The accepted
+body is strict and contains only `filename`, `contentType` (`image/jpeg`,
+`image/png`, or `image/webp`), `contentBase64`, and `altText`. The server checks
+extension, magic bytes, strict base64, and a 2 MiB decoded-size cap before
+object-storage I/O. The response exposes safe metadata only; it excludes
+`storageKey` and provider details. A storage/configuration outage returns the
+generic `503 STORAGE_UNAVAILABLE` envelope. Metadata persistence and its audit
+record share one transaction; a failed transaction triggers object cleanup.
+
 ### `POST /service-areas/check`
 
 Body gồm mã/tên địa lý từ Address input, không cần recipient/phone.
@@ -176,6 +195,28 @@ Query: `serviceAreaId`, `fromDate`, `toDate` tối đa khoảng thời gian đư
 | DELETE | `/api/v1/addresses/{id}` | CUSTOMER own, soft archive |
 
 Auth.js endpoints nằm dưới route chuẩn được cấu hình; không tái tạo login protocol tùy ý.
+
+### Password recovery
+
+`POST /api/v1/auth/forgot-password` nhận body strict `{ "email": "..." }` và
+trả `202` với `{ "data": { "accepted": true } }` cho mọi email hợp lệ về mặt
+cú pháp. Response không xác nhận email có tồn tại, active hay có thể nhận thư.
+Mỗi response có request ID trong `meta.requestId` và `X-Request-Id`; request ID
+chỉ dùng để operator đối chiếu log đã redact.
+
+Với user active, server tạo hash token và password-reset delivery outbox trong
+cùng PostgreSQL transaction. Token thô chỉ được giữ mã hóa trong outbox để worker
+gửi thư sau commit; không có token, URL reset hoặc nội dung email trong API
+response hay application log. Worker đánh dấu delivery `DELIVERED` chỉ sau khi
+provider nhận request thành công. Token `PENDING`, `PROCESSING`, `FAILED`,
+`CANCELLED`, hết hạn hoặc đã dùng luôn bị `POST /api/v1/auth/reset-password`
+từ chối bằng lỗi validation chung `422`.
+
+`POST /api/v1/auth/reset-password` nhận body strict
+`{ "token": "...", "password": "..." }`. Password phải có từ 8 đến 128 ký tự.
+Một token delivery-confirmed chỉ được claim một lần; reset tăng `authVersion` và
+vô hiệu hóa các token reset còn lại của user trong cùng transaction. Không có
+endpoint public để xem outbox hoặc trạng thái delivery.
 
 Mật khẩu đăng ký, đăng nhập và đặt lại có độ dài từ 8 đến 128 ký tự.
 Registration tạo user và gắn role `CUSTOMER` trong cùng transaction. Role hệ
@@ -330,13 +371,12 @@ Không có order/payment/appointment/allocation một phần khi transaction th�
 |---|---|---|
 | GET | `/api/v1/orders` | CUSTOMER own |
 | GET | `/api/v1/orders/{id}` | CUSTOMER own |
-| POST | `/api/v1/orders/{id}/actions/cancel` (deferred) | CUSTOMER own + state policy |
+| POST | `/api/v1/orders/{id}/actions/cancel` | CUSTOMER own + server-side state policy |
 | GET | `/api/v1/orders/{id}/installation` (deferred; current order detail embeds appointment) | CUSTOMER own |
 | POST | `/api/v1/installation-appointments/{id}/actions/reschedule` (deferred) | CUSTOMER own + deadline/state |
 
-Chỉ hai route GET đầu tiên được expose trong staging MVP đã freeze. Các action
-customer còn lại là target contract tương lai và không được client giả định là
-khả dụng.
+The cancel route is exposed. Customer reschedule remains a deferred target
+contract and clients must not assume it is available.
 
 Cancel body:
 
@@ -346,6 +386,20 @@ Cancel body:
   "expectedVersion": 1
 }
 ```
+
+`POST /api/v1/orders/{id}/actions/cancel` returns the authoritative order
+snapshot (`id`, `status`, `inventoryStatus`, `version`, `cancelledAt`,
+`cancellationReason`, `updatedAt`). The request never supplies totals, stock,
+payment state, appointment state, or a next order state.
+
+Cancellation follows the central order-transition policy: a CUSTOMER may cancel
+only their own `PENDING_CONFIRMATION` order; the order must still have
+`RESERVED` inventory, an unpaid/non-refunded payment, and no payable online
+payment session. An out-of-scope order returns `404` without order data. A
+stale version, state/payment guard, reservation, or slot conflict returns a
+structured `409`; invalid JSON/input is `400`; unauthenticated and disallowed
+roles receive `401`/`403`. Successful cancellation releases reservation and
+appointment capacity, updates the order, and writes audit in one transaction.
 
 Reschedule body:
 
@@ -500,6 +554,7 @@ Order actions:
 - `mark-installation-in-progress` chủ yếu do appointment orchestration
 - `complete`
 - `cancel`
+- `expire` (MANAGER/ADMIN only; explicit bounded maintenance action)
 
 Body chung:
 
@@ -527,14 +582,32 @@ server reads amount and currency from the owned order/payment. Success returns
 `paymentUrl`, `id`, `sessionId`, `status`, `amount`, `currency`, and
 `expiresAt`. A reused key with the same fingerprint returns the original
 session and `Idempotent-Replayed: true`; a different fingerprint returns
-`409 IDEMPOTENCY_CONFLICT`.
+`409 IDEMPOTENCY_CONFLICT`. Only one unexpired `CREATED`/`PENDING` VNPay
+session may exist per payment: a different key while one is payable returns
+`409 CONFLICT` with message `ACTIVE_PAYMENT_SESSION`. A new key after expiry
+marks the stale local session `EXPIRED` in the same transaction before it
+creates a replacement. Reusing the original key after it is no longer payable
+returns `409 CONFLICT` with message `PAYMENT_SESSION_NOT_REUSABLE`; it never
+silently issues a second link.
+
+VNPay issuance is disabled by default. `POST /api/v1/payment/create` returns
+`409 CONFLICT` with message `ONLINE_PAYMENT_UNAVAILABLE` until the server-side
+`VNPAY_PUBLIC_ENABLED=true` gate, complete merchant configuration, sandbox
+evidence, and required human approvals are present. This gate affects new
+customer redirects only; already-issued signed IPNs continue to settle.
 
 The webhook verifies HMAC-SHA512, merchant, provider reference, amount,
-response code, and transaction status before mutation. A valid success changes
-payment to `PAID` and conditionally confirms a pending order in one transaction.
-A duplicate signed event is acknowledged without another version increment or
-audit event. Invalid signature is `403`; malformed payload is `400`; amount
-mismatch uses VNPay `RspCode=04`. Authenticated responses are
+currency, response code, transaction status, and current database state before
+mutation. VNPay IPN does not always include `vnp_CurrCode`; when absent the
+only supported provider contract is `VND`, and any provided currency must equal
+the database currency. A valid success changes payment to `PAID` and
+conditionally confirms a pending order in one transaction. An exact signed
+event replay is acknowledged without another version increment or audit event.
+Signed amount/currency mismatch is retained as an append-only `REJECTED`
+webhook ledger entry and returns VNPay `RspCode=04`; a second provider
+transaction after payment is already paid is retained as `DUPLICATE` for
+reconciliation and never changes order/payment/audit state again. Invalid
+signature is `403`; malformed payload is `400`. Authenticated responses are
 `Cache-Control: private, no-store`.
 
 `POST /api/v1/payment/{id}/refund` is reserved. It is not active until refund
@@ -720,6 +793,16 @@ Không dùng message để client quyết định logic; dùng `code`.
   allowed Origin, Content-Type, body size và scoped rate limit trước use case.
 - Rate limiter có interface thay thế được; local/test dùng in-memory adapter.
   Staging/production nhiều instance phải cấu hình shared adapter trước rollout.
+
+### 18.1 Render demo/staging topology exception
+
+Trong cấu hình Render demo/staging chi phí thấp, chỉ một instance được phép
+chạy và phải đặt rõ `RENDER_STAGING_SINGLE_INSTANCE=true`,
+`RATE_LIMIT_BACKEND=memory`, `TRUST_PROXY_HEADERS=false`. Application không đọc
+`X-Forwarded-For` từ request không được tin cậy; các request đó đi vào common
+rate-limit bucket. Đây không phải bằng chứng cho multi-instance hoặc production
+rate limiting. Khi tăng số instance hoặc đưa public traffic vào production, phải
+chuyển sang shared/edge control đã được chứng minh trước release.
 - HTTP logger chỉ ghi allowlist gồm request ID, method, route không có query,
   status và duration; không ghi body, token, secret hoặc PII.
 
@@ -730,7 +813,7 @@ Không dùng message để client quyết định logic; dùng `code`.
 - Storage validation failure trả `400 VALIDATION_ERROR`; provider/config outage
   trả `503 STORAGE_UNAVAILABLE` với message generic, không lộ endpoint hay
   credential.
-- Operations mutation rate-limit 30 request/phút theo client và action scope. Chỉ đọc `X-Forwarded-For`/`X-Real-IP` khi `TRUST_PROXY_HEADERS=true` và ingress đã được cấu hình xóa header do client tự gửi; mặc định fail-closed dùng một bucket không tin cậy. Lỗi trả envelope chuẩn: `403 FORBIDDEN`, `413 PAYLOAD_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`, `429 RATE_LIMITED` kèm `Retry-After`.
+- Operations mutation rate-limit 30 request/phút theo client và action scope. Chỉ đọc `x-247-client-address` khi `TRUST_PROXY_HEADERS=true`, `TRUSTED_PROXY_PROVIDER=cloudfront`, CloudFront Function đã ghi đè giá trị từ `event.viewer.ip`, và direct origin bị chặn. `X-Forwarded-For`/`X-Real-IP` không phải input được tin cậy; mặc định fail-closed dùng một bucket không tin cậy. Lỗi trả envelope chuẩn: `403 FORBIDDEN`, `413 PAYLOAD_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE`, `429 RATE_LIMITED` kèm `Retry-After`.
 - Rate limit auth, service check, checkout, warranty và action admin nhạy cảm.
 - `requestId` nhận từ proxy chỉ khi trusted; nếu không server sinh mới.
 - Không phản chiếu raw input trong lỗi.

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import {
+  AppointmentStatus,
   InventoryDisposition,
   OrderStatus,
   PaymentMethod,
+  PaymentSessionStatus,
   PaymentStatus,
   ProductCategory,
   type Product,
@@ -11,7 +13,7 @@ import {
 } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { transitionOrder } from '@/modules/commerce';
+import { expireUnpaidOrders, transitionOrder } from '@/modules/commerce';
 import { type IdentityActor } from '@/modules/identity';
 import { prisma } from '@/shared/db/client';
 import { withApiHandler } from '@/shared/http/api-handler';
@@ -30,6 +32,9 @@ async function createOrderFixture(options: {
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
   variants?: VariantInput[];
+  withAppointment?: boolean;
+  appointmentStatus?: AppointmentStatus;
+  slotBookedCount?: number;
 }) {
   const namespace = randomUUID().replaceAll('-', '');
   const [manager, customer] = await Promise.all([
@@ -92,6 +97,36 @@ async function createOrderFixture(options: {
   );
   const inventoryStatus =
     options.inventoryStatus ?? InventoryDisposition.RESERVED;
+  const scheduledStartAt = new Date(Date.now() + 72 * 60 * 60 * 1_000);
+  const scheduledEndAt = new Date(
+    scheduledStartAt.getTime() + 2 * 60 * 60 * 1_000,
+  );
+  const serviceArea = options.withAppointment
+    ? await prisma.serviceArea.create({
+        data: {
+          code: `ORDER-TRANSITION-${namespace}`,
+          districtCode: `DISTRICT-${namespace}`,
+          districtName: 'Order transition district',
+          installationFee: 0,
+          provinceCode: `PROVINCE-${namespace}`,
+          provinceName: 'Order transition province',
+          shippingFee: 0,
+        },
+        select: { id: true },
+      })
+    : null;
+  const slot = serviceArea
+    ? await prisma.installationSlot.create({
+        data: {
+          serviceAreaId: serviceArea.id,
+          startsAt: scheduledStartAt,
+          endsAt: scheduledEndAt,
+          capacity: 2,
+          bookedCount: options.slotBookedCount ?? 1,
+        },
+        select: { id: true },
+      })
+    : null;
   const order = await prisma.order.create({
     data: {
       orderNumber: `ORDER-${namespace.toUpperCase()}`,
@@ -111,6 +146,7 @@ async function createOrderFixture(options: {
       provinceCode: 'TEST-PROVINCE',
       provinceName: 'Test Province',
       countryCode: 'VN',
+      serviceAreaId: serviceArea?.id,
       idempotencyHash: `order-${namespace}`,
       requestFingerprint: `order-${namespace}`,
       items: {
@@ -134,9 +170,25 @@ async function createOrderFixture(options: {
           referenceCode: `PAY-${namespace.toUpperCase()}`,
         },
       },
+      ...(serviceArea && slot
+        ? {
+            appointment: {
+              create: {
+                serviceAreaId: serviceArea.id,
+                slotId: slot.id,
+                status:
+                  options.appointmentStatus ??
+                  AppointmentStatus.ASSIGNMENT_PENDING,
+                scheduledStartAt,
+                scheduledEndAt,
+              },
+            },
+          }
+        : {}),
     },
     include: {
       items: { select: { id: true, productVariantId: true, quantity: true } },
+      appointment: { select: { id: true, status: true, version: true } },
     },
   });
   const lifecycleAt = new Date();
@@ -157,16 +209,38 @@ async function createOrderFixture(options: {
 
   return {
     actor,
+    customer,
     order,
+    serviceArea,
+    slot,
     variants,
     async cleanup() {
       await prisma.auditLog.deleteMany({ where: { targetId: order.id } });
+      await prisma.installationEvidence.deleteMany({
+        where: { assignment: { appointment: { orderId: order.id } } },
+      });
+      await prisma.technicianAssignment.deleteMany({
+        where: { appointment: { orderId: order.id } },
+      });
+      await prisma.installationAppointment.deleteMany({
+        where: { orderId: order.id },
+      });
+      await prisma.paymentWebhookEvent.deleteMany({
+        where: { payment: { orderId: order.id } },
+      });
+      await prisma.paymentSession.deleteMany({
+        where: { payment: { orderId: order.id } },
+      });
       await prisma.payment.deleteMany({ where: { orderId: order.id } });
       await prisma.inventoryAllocation.deleteMany({
         where: { orderItemId: { in: order.items.map(({ id }) => id) } },
       });
       await prisma.orderItem.deleteMany({ where: { orderId: order.id } });
       await prisma.order.delete({ where: { id: order.id } });
+      if (slot)
+        await prisma.installationSlot.delete({ where: { id: slot.id } });
+      if (serviceArea)
+        await prisma.serviceArea.delete({ where: { id: serviceArea.id } });
       await prisma.inventory.deleteMany({
         where: { productVariantId: { in: variants.map(({ id }) => id) } },
       });
@@ -272,6 +346,384 @@ describe.sequential('admin order transition transaction invariants', () => {
             clientRequestId,
           );
         }
+      },
+    );
+  });
+
+  it('releases reserved inventory, appointment capacity, and unpaid payment in one cancellation transaction', async () => {
+    await withFixture(
+      { status: OrderStatus.PENDING_CONFIRMATION, withAppointment: true },
+      async ({ actor, order, slot, variants }) => {
+        expect(slot).not.toBeNull();
+        await expect(
+          transitionOrder(
+            actor,
+            order.id,
+            'cancel',
+            order.version,
+            'Customer requested cancellation',
+            `cancel-${randomUUID()}`,
+          ),
+        ).resolves.toMatchObject({
+          status: OrderStatus.CANCELLED,
+          inventoryStatus: InventoryDisposition.RELEASED,
+          version: order.version + 1,
+          cancellationReason: 'Customer requested cancellation',
+        });
+
+        const [
+          updatedOrder,
+          inventory,
+          allocation,
+          appointment,
+          updatedSlot,
+          payment,
+          audits,
+        ] = await Promise.all([
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+          prisma.inventory.findUniqueOrThrow({
+            where: { productVariantId: variants[0].id },
+          }),
+          prisma.inventoryAllocation.findUniqueOrThrow({
+            where: { orderItemId: order.items[0].id },
+          }),
+          prisma.installationAppointment.findUniqueOrThrow({
+            where: { orderId: order.id },
+          }),
+          prisma.installationSlot.findUniqueOrThrow({
+            where: { id: slot!.id },
+          }),
+          prisma.payment.findUniqueOrThrow({ where: { orderId: order.id } }),
+          prisma.auditLog.findMany({
+            where: { targetId: order.id },
+            select: { action: true, actorUserId: true, reason: true },
+          }),
+        ]);
+        expect(updatedOrder).toMatchObject({
+          status: OrderStatus.CANCELLED,
+          inventoryStatus: InventoryDisposition.RELEASED,
+          version: order.version + 1,
+          cancelledAt: expect.any(Date),
+        });
+        expect(inventory).toMatchObject({ onHand: 5, reserved: 0, version: 2 });
+        expect(allocation).toMatchObject({
+          status: InventoryDisposition.RELEASED,
+          releasedAt: expect.any(Date),
+          consumedAt: null,
+        });
+        expect(appointment).toMatchObject({
+          status: AppointmentStatus.CANCELLED,
+          capacityReleasedAt: expect.any(Date),
+          version: 2,
+        });
+        expect(updatedSlot).toMatchObject({ bookedCount: 0, version: 2 });
+        expect(payment).toMatchObject({
+          status: PaymentStatus.CANCELLED,
+          cancelledAt: expect.any(Date),
+          version: 2,
+        });
+        expect(audits).toEqual([
+          {
+            action: 'order.cancel',
+            actorUserId: actor.userId,
+            reason: 'Customer requested cancellation',
+          },
+        ]);
+      },
+    );
+  });
+
+  it('allows exactly one concurrent cancellation and releases every resource once', async () => {
+    await withFixture(
+      { status: OrderStatus.PENDING_CONFIRMATION, withAppointment: true },
+      async ({ actor, order, slot, variants }) => {
+        const results = await Promise.all(
+          ['a', 'b'].map(async (suffix) => {
+            try {
+              await transitionOrder(
+                actor,
+                order.id,
+                'cancel',
+                order.version,
+                `Concurrent cancellation ${suffix}`,
+                `cancel-${suffix}-${randomUUID()}`,
+              );
+              return 'success' as const;
+            } catch (error) {
+              return error;
+            }
+          }),
+        );
+        expect(results.filter((result) => result === 'success')).toHaveLength(
+          1,
+        );
+        expect(results.find((result) => result !== 'success')).toMatchObject({
+          code: 'CONCURRENT_MODIFICATION',
+        });
+        await expect(
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+        ).resolves.toMatchObject({
+          status: OrderStatus.CANCELLED,
+          version: order.version + 1,
+          inventoryStatus: InventoryDisposition.RELEASED,
+        });
+        await expect(
+          prisma.inventory.findUniqueOrThrow({
+            where: { productVariantId: variants[0].id },
+          }),
+        ).resolves.toMatchObject({ onHand: 5, reserved: 0, version: 2 });
+        await expect(
+          prisma.installationSlot.findUniqueOrThrow({
+            where: { id: slot!.id },
+          }),
+        ).resolves.toMatchObject({ bookedCount: 0, version: 2 });
+        await expect(
+          prisma.inventoryAllocation.count({
+            where: {
+              orderItemId: order.items[0].id,
+              status: InventoryDisposition.RELEASED,
+            },
+          }),
+        ).resolves.toBe(1);
+        await expect(
+          prisma.auditLog.count({
+            where: { targetId: order.id, action: 'order.cancel' },
+          }),
+        ).resolves.toBe(1);
+      },
+    );
+  });
+
+  it('rolls back cancellation when a reservation is incomplete', async () => {
+    await withFixture(
+      { status: OrderStatus.PENDING_CONFIRMATION, withAppointment: true },
+      async ({ actor, order, slot, variants }) => {
+        await prisma.inventoryAllocation.delete({
+          where: { orderItemId: order.items[0].id },
+        });
+        await expect(
+          transitionOrder(
+            actor,
+            order.id,
+            'cancel',
+            order.version,
+            'Reservation is missing',
+            `cancel-missing-reservation-${randomUUID()}`,
+          ),
+        ).rejects.toMatchObject({ code: 'INVENTORY_CONFLICT' });
+        await expect(
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+        ).resolves.toMatchObject({
+          status: OrderStatus.PENDING_CONFIRMATION,
+          inventoryStatus: InventoryDisposition.RESERVED,
+          version: order.version,
+        });
+        await expect(
+          prisma.inventory.findUniqueOrThrow({
+            where: { productVariantId: variants[0].id },
+          }),
+        ).resolves.toMatchObject({ onHand: 5, reserved: 1, version: 1 });
+        await expect(
+          prisma.installationAppointment.findUniqueOrThrow({
+            where: { orderId: order.id },
+          }),
+        ).resolves.toMatchObject({
+          status: AppointmentStatus.ASSIGNMENT_PENDING,
+          capacityReleasedAt: null,
+          version: 1,
+        });
+        await expect(
+          prisma.installationSlot.findUniqueOrThrow({
+            where: { id: slot!.id },
+          }),
+        ).resolves.toMatchObject({ bookedCount: 1, version: 1 });
+        await expect(
+          prisma.payment.findUniqueOrThrow({ where: { orderId: order.id } }),
+        ).resolves.toMatchObject({ status: PaymentStatus.PENDING, version: 1 });
+        await expect(
+          prisma.auditLog.count({ where: { targetId: order.id } }),
+        ).resolves.toBe(0);
+      },
+    );
+  });
+
+  it('rolls back every cancellation side effect when audit persistence fails', async () => {
+    await withFixture(
+      { status: OrderStatus.PENDING_CONFIRMATION, withAppointment: true },
+      async ({ actor, order, slot, variants }) => {
+        await prisma.user.delete({ where: { id: actor.userId } });
+        await expect(
+          transitionOrder(
+            actor,
+            order.id,
+            'cancel',
+            order.version,
+            'Audit persistence failure rollback',
+            `cancel-audit-failure-${randomUUID()}`,
+          ),
+        ).rejects.toThrow();
+        await expect(
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+        ).resolves.toMatchObject({
+          status: OrderStatus.PENDING_CONFIRMATION,
+          inventoryStatus: InventoryDisposition.RESERVED,
+          version: order.version,
+        });
+        await expect(
+          prisma.inventory.findUniqueOrThrow({
+            where: { productVariantId: variants[0].id },
+          }),
+        ).resolves.toMatchObject({ onHand: 5, reserved: 1, version: 1 });
+        await expect(
+          prisma.installationAppointment.findUniqueOrThrow({
+            where: { orderId: order.id },
+          }),
+        ).resolves.toMatchObject({
+          status: AppointmentStatus.ASSIGNMENT_PENDING,
+          capacityReleasedAt: null,
+          version: 1,
+        });
+        await expect(
+          prisma.installationSlot.findUniqueOrThrow({
+            where: { id: slot!.id },
+          }),
+        ).resolves.toMatchObject({ bookedCount: 1, version: 1 });
+        await expect(
+          prisma.payment.findUniqueOrThrow({ where: { orderId: order.id } }),
+        ).resolves.toMatchObject({ status: PaymentStatus.PENDING, version: 1 });
+        await expect(
+          prisma.auditLog.count({ where: { targetId: order.id } }),
+        ).resolves.toBe(0);
+      },
+    );
+  });
+
+  it('expires only a bounded set of old unpaid orders through the approved maintenance action', async () => {
+    await withFixture(
+      { status: OrderStatus.PENDING_CONFIRMATION, withAppointment: true },
+      async ({ actor, order }) => {
+        await expect(
+          expireUnpaidOrders(actor, {
+            before: new Date(Date.now() + 1_000),
+            limit: 1,
+            reason: 'Approved maintenance expiry',
+          }),
+        ).resolves.toEqual({ candidates: 1, expired: 1, skipped: 0 });
+        await expect(
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+        ).resolves.toMatchObject({
+          status: OrderStatus.CANCELLED,
+          inventoryStatus: InventoryDisposition.RELEASED,
+        });
+        await expect(
+          prisma.auditLog.count({
+            where: { targetId: order.id, action: 'order.expire' },
+          }),
+        ).resolves.toBe(1);
+        await expect(
+          expireUnpaidOrders(actor, {
+            before: new Date(Date.now() + 1_000),
+            limit: 1,
+            reason: 'Approved maintenance retry',
+          }),
+        ).resolves.toEqual({ candidates: 0, expired: 0, skipped: 0 });
+      },
+    );
+  });
+
+  it('does not release a paid order through the unpaid cancellation path', async () => {
+    await withFixture(
+      {
+        status: OrderStatus.PENDING_CONFIRMATION,
+        paymentStatus: PaymentStatus.PAID,
+        withAppointment: true,
+      },
+      async ({ actor, order, slot, variants }) => {
+        await expect(
+          transitionOrder(
+            actor,
+            order.id,
+            'cancel',
+            order.version,
+            'Attempt to cancel paid order',
+            `paid-cancel-${randomUUID()}`,
+          ),
+        ).rejects.toMatchObject({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'PAYMENT_NOT_READY',
+        });
+        await expect(
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+        ).resolves.toMatchObject({
+          status: OrderStatus.PENDING_CONFIRMATION,
+          inventoryStatus: InventoryDisposition.RESERVED,
+          version: order.version,
+        });
+        await expect(
+          prisma.inventory.findUniqueOrThrow({
+            where: { productVariantId: variants[0].id },
+          }),
+        ).resolves.toMatchObject({ onHand: 5, reserved: 1, version: 1 });
+        await expect(
+          prisma.installationSlot.findUniqueOrThrow({
+            where: { id: slot!.id },
+          }),
+        ).resolves.toMatchObject({ bookedCount: 1, version: 1 });
+        await expect(
+          prisma.auditLog.count({ where: { targetId: order.id } }),
+        ).resolves.toBe(0);
+      },
+    );
+  });
+
+  it('does not cancel an order while an online payment session is still payable', async () => {
+    await withFixture(
+      {
+        status: OrderStatus.PENDING_CONFIRMATION,
+        paymentMethod: PaymentMethod.VNPAY,
+        withAppointment: true,
+      },
+      async ({ actor, order, variants }) => {
+        const payment = await prisma.payment.findUniqueOrThrow({
+          where: { orderId: order.id },
+          select: { id: true },
+        });
+        await prisma.paymentSession.create({
+          data: {
+            paymentId: payment.id,
+            provider: PaymentMethod.VNPAY,
+            providerReference: `VNPAY-${randomUUID()}`,
+            idempotencyHash: `session-${randomUUID()}`,
+            requestFingerprint: `session-${randomUUID()}`,
+            status: PaymentSessionStatus.CREATED,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1_000),
+          },
+        });
+        await expect(
+          transitionOrder(
+            actor,
+            order.id,
+            'cancel',
+            order.version,
+            'Attempt while online payment remains active',
+            `active-session-${randomUUID()}`,
+          ),
+        ).rejects.toMatchObject({
+          code: 'INVALID_STATE_TRANSITION',
+          message: 'PAYMENT_NOT_READY',
+        });
+        await expect(
+          prisma.order.findUniqueOrThrow({ where: { id: order.id } }),
+        ).resolves.toMatchObject({
+          status: OrderStatus.PENDING_CONFIRMATION,
+          inventoryStatus: InventoryDisposition.RESERVED,
+          version: order.version,
+        });
+        await expect(
+          prisma.inventory.findUniqueOrThrow({
+            where: { productVariantId: variants[0].id },
+          }),
+        ).resolves.toMatchObject({ onHand: 5, reserved: 1, version: 1 });
       },
     );
   });

@@ -8,6 +8,16 @@ const manager: IdentityActor = {
   authVersion: 1,
   roles: ['MANAGER'],
 };
+const customer: IdentityActor = {
+  userId: 'customer',
+  authVersion: 1,
+  roles: ['CUSTOMER'],
+};
+const staff: IdentityActor = {
+  userId: 'staff',
+  authVersion: 1,
+  roles: ['STAFF'],
+};
 
 function decide(
   action: OrderAction,
@@ -19,6 +29,9 @@ function decide(
     current: 'PENDING_CONFIRMATION',
     inventoryStatus: 'RESERVED',
     hasAppointment: false,
+    appointmentStatus: null,
+    isOwner: true,
+    hasActiveOnlinePaymentSession: false,
     paymentMethod: 'COD',
     paymentStatus: 'PENDING',
     ...overrides,
@@ -96,6 +109,61 @@ describe('order transition policy', () => {
         hasAppointment: true,
       }),
     ).toEqual({ allowed: false, code: 'INVALID_STATE_TRANSITION' });
+  });
+
+  it('allows a customer to cancel only their own pending order', () => {
+    expect(
+      decide('cancel', {
+        actor: customer,
+        isOwner: true,
+        hasAppointment: true,
+        appointmentStatus: 'ASSIGNMENT_PENDING',
+      }),
+    ).toEqual({
+      allowed: true,
+      current: 'PENDING_CONFIRMATION',
+      next: 'CANCELLED',
+      inventoryEffect: 'RELEASE_RESERVED',
+      appointmentEffect: 'CANCEL_AND_RELEASE_CAPACITY',
+      paymentEffect: 'CANCEL_UNPAID',
+    });
+    expect(decide('cancel', { actor: customer, isOwner: false })).toEqual({
+      allowed: false,
+      code: 'FORBIDDEN',
+    });
+    expect(decide('cancel', { actor: customer, current: 'CONFIRMED' })).toEqual(
+      { allowed: false, code: 'INVALID_STATE_TRANSITION' },
+    );
+  });
+
+  it('keeps cancellation and expiry policy server-side', () => {
+    expect(decide('cancel', { actor: staff, current: 'PROCESSING' })).toEqual({
+      allowed: false,
+      code: 'FORBIDDEN',
+    });
+    expect(
+      decide('expire', {
+        actor: manager,
+        hasAppointment: true,
+        appointmentStatus: 'ASSIGNMENT_PENDING',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      next: 'CANCELLED',
+      inventoryEffect: 'RELEASE_RESERVED',
+    });
+    expect(decide('expire', { actor: customer })).toEqual({
+      allowed: false,
+      code: 'FORBIDDEN',
+    });
+    expect(decide('cancel', { hasActiveOnlinePaymentSession: true })).toEqual({
+      allowed: false,
+      code: 'PAYMENT_NOT_READY',
+    });
+    expect(decide('cancel', { paymentStatus: 'PAID' })).toEqual({
+      allowed: false,
+      code: 'PAYMENT_NOT_READY',
+    });
   });
 
   it('rejects invalid state, inventory lifecycle, and actor', () => {

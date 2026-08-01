@@ -3,11 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/shared/auth/server', () => ({ getCurrentActor: vi.fn() }));
-vi.mock('@/modules/catalog/infrastructure/local-image-storage', () => ({
-  LocalImageStorageError: class LocalImageStorageError extends Error {},
-  removeLocalProductImage: vi.fn(),
-  saveLocalProductImage: vi.fn(),
-}));
 
 import { GET as adminProductsGet } from '../../app/api/v1/admin/products/route';
 import { POST as adminProductImagePost } from '../../app/api/v1/admin/products/[id]/images/route';
@@ -24,7 +19,6 @@ import {
 } from '@/modules/catalog';
 import { getCurrentActor } from '@/shared/auth/server';
 import { type IdentityActor } from '@/modules/identity';
-import { saveLocalProductImage } from '@/modules/catalog/infrastructure/local-image-storage';
 import { prisma } from '@/shared/db/client';
 
 const createdProductIds: string[] = [];
@@ -244,7 +238,7 @@ describe('catalog persistence and authorization', () => {
     });
   });
 
-  it('authorizes product-image upload before writing to local storage', async () => {
+  it('authorizes product-image upload before any catalog image is persisted', async () => {
     const { product } = await createCatalogFixture();
     vi.mocked(getCurrentActor).mockResolvedValue(customer);
     const response = await adminProductImagePost(
@@ -268,7 +262,9 @@ describe('catalog persistence and authorization', () => {
     );
 
     expect(response.status).toBe(403);
-    expect(saveLocalProductImage).not.toHaveBeenCalled();
+    await expect(
+      prisma.productImage.count({ where: { productId: product.id } }),
+    ).resolves.toBe(0);
   });
 });
 

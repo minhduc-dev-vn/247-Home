@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Prisma } from '@prisma/client';
+import { PasswordResetDeliveryStatus, Prisma } from '@prisma/client';
 
 import { IdentityError } from '@/modules/identity/domain/errors';
 import { type IdentityActor } from '@/modules/identity/domain/roles';
@@ -10,11 +10,12 @@ import {
 } from '@/modules/identity/infrastructure/password-hasher';
 import {
   createCustomer,
+  findPasswordResetUserByEmail,
   findUserByEmail,
   findUserById,
   type UserWithRoles,
 } from '@/modules/identity/infrastructure/user-repository';
-import { sendLocalPasswordResetEmail } from '@/modules/identity/infrastructure/local-password-reset-mailer';
+import { encryptPasswordResetToken } from '@/modules/identity/infrastructure/password-reset-outbox-crypto';
 import {
   type LoginInput,
   normalizeEmail,
@@ -24,6 +25,9 @@ import {
 import { prisma } from '@/shared/db/client';
 
 const passwordResetLifetimeMs = 60 * 60 * 1_000;
+const passwordResetTimingPassword = 'password-reset-timing-padding-v1';
+const passwordResetTimingHash =
+  '$2b$12$DBUle2zaTvc3QObuxzRYeOjV3ph/v3BY1PowqetVinsGc.dwAKM/u';
 
 function toActor(user: UserWithRoles): IdentityActor {
   return {
@@ -102,7 +106,10 @@ export async function getOwnProfile(actor: IdentityActor, userId: string) {
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
-  const user = await findUserByEmail(normalizeEmail(email));
+  const [user] = await Promise.all([
+    findPasswordResetUserByEmail(normalizeEmail(email)),
+    verifyPassword(passwordResetTimingPassword, passwordResetTimingHash),
+  ]);
 
   if (!user || !user.isActive) {
     return;
@@ -111,15 +118,26 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const token = randomBytes(32).toString('base64url');
   const tokenHash = createHash('sha256').update(token).digest('hex');
   const expiresAt = new Date(Date.now() + passwordResetLifetimeMs);
+  const now = new Date();
 
-  await prisma.passwordResetToken.create({
-    data: { userId: user.id, tokenHash, expiresAt },
-  });
-
-  const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
-  await sendLocalPasswordResetEmail({
-    to: user.email,
-    resetUrl: `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`,
+  await prisma.$transaction(async (transaction) => {
+    await transaction.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    await transaction.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+        delivery: {
+          create: {
+            recipientEmail: user.email,
+            encryptedToken: encryptPasswordResetToken(token),
+          },
+        },
+      },
+    });
   });
 }
 
@@ -135,10 +153,17 @@ export async function resetPassword(input: ResetPasswordInput): Promise<void> {
         usedAt: null,
         expiresAt: { gt: now },
       },
-      select: { id: true, userId: true },
+      select: {
+        id: true,
+        userId: true,
+        delivery: { select: { status: true } },
+      },
     });
 
-    if (!resetToken) {
+    if (
+      !resetToken ||
+      resetToken.delivery?.status !== PasswordResetDeliveryStatus.DELIVERED
+    ) {
       throw new IdentityError('INVALID_RESET_TOKEN');
     }
 

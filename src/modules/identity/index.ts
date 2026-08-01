@@ -7,6 +7,10 @@ export {
   requestPasswordReset,
   resetPassword,
 } from '@/modules/identity/application/identity-service';
+export {
+  deliverPasswordResetEmail,
+  deliverPendingPasswordResetEmails,
+} from '@/modules/identity/application/password-reset-delivery-service';
 export { IdentityError } from '@/modules/identity/domain/errors';
 export {
   roleCodes,

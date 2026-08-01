@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   canonicalizeVnpayParameters,
+  isVnpayPubliclyEnabled,
   parseVnpayDate,
   signVnpayParameters,
   toVnpayDate,
@@ -44,5 +45,26 @@ describe('VNPay protocol adapter', () => {
     expect(
       webhookPaymentOutcome({ responseCode: '00', transactionStatus: '01' }),
     ).toBe('FAILED');
+  });
+
+  it('requires an explicit public-payment gate and a complete configuration', () => {
+    const environment: NodeJS.ProcessEnv = {
+      APP_ORIGIN: 'https://merchant.example.test',
+      NODE_ENV: 'test',
+      VNPAY_HASH_SECRET: secret,
+      VNPAY_PUBLIC_ENABLED: 'true',
+      VNPAY_RETURN_URL: 'https://merchant.example.test/api/v1/payment/return',
+      VNPAY_TMN_CODE: 'TEST247',
+    };
+    expect(isVnpayPubliclyEnabled(environment)).toBe(true);
+    expect(
+      isVnpayPubliclyEnabled({
+        ...environment,
+        VNPAY_PUBLIC_ENABLED: 'false',
+      }),
+    ).toBe(false);
+    expect(
+      isVnpayPubliclyEnabled({ ...environment, VNPAY_HASH_SECRET: '' }),
+    ).toBe(false);
   });
 });

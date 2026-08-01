@@ -58,8 +58,65 @@ After migration, verify:
 - fixture namespaces are zero in a shared staging database;
 - `/api/ready` succeeds using the runtime role.
 
+### Password-reset outbox migration
+
+`20260728120000_identity_password_reset_outbox` is additive: it creates a
+delivery-status enum and `password_reset_deliveries` with one-to-one token
+linkage, a bounded-worker index and a non-negative attempts check. It does not
+delete, backfill or alter existing reset-token rows. The new application rejects
+legacy rows without a confirmed delivery record, so users with an older link
+must request a new one.
+
+Before a shared-environment migration, verify a backup exists and the runtime
+secret store has the approved mailer configuration. After migration, verify the
+new table/index/foreign key, no failed migration rows, and an isolated synthetic
+delivery through the worker. Do not roll back the database by dropping the enum
+or table. An application downgrade to pre-outbox reset code is unsafe; disable
+password recovery and apply a forward fix instead.
+
 Development seed is allowed only in an isolated acceptance database. Run it
 twice and compare critical counts to prove idempotency. Never seed production.
+
+## Unpaid order expiry maintenance
+
+Order expiry is an explicit, bounded MANAGER/ADMIN operation; it is not a
+database trigger, a hidden TTL, or an unattended cron job. It is for old
+`PENDING_CONFIRMATION` orders whose inventory remains `RESERVED` and whose
+payment is not `PAID` or `REFUNDED`.
+
+1. Confirm the target is staging or the approved production database, record
+   the release SHA and take/confirm a provider-managed backup. Do not run this
+   operation against a local shell's accidental `DATABASE_URL`.
+2. Obtain the active approved MANAGER/ADMIN user CUID through the approved
+   administrative process. Do not place it, a password, or a connection string
+   in a shell history, ticket, or Git file.
+3. Review the bounded candidate count first. The cutoff must be explicit UTC
+   ISO-8601; `--limit` is 1 to 100 and defaults to 25.
+
+```powershell
+pnpm orders:expire -- --actor-id <manager-or-admin-cuid> --before 2026-07-29T00:00:00Z --dry-run
+```
+
+4. After Operations approval, execute the same command without `--dry-run` and
+   supply a human-readable reason:
+
+```powershell
+pnpm orders:expire -- --actor-id <manager-or-admin-cuid> --before 2026-07-29T00:00:00Z --limit 25 --reason "Approved unpaid-order expiry run INC-123"
+```
+
+Each candidate is handled in its own PostgreSQL transaction. A successful run
+conditionally moves the order to `CANCELLED`, releases `RESERVED` inventory and
+appointment capacity once, handles eligible unpaid payment/session state, and
+writes `order.expire` audit. The command emits aggregate counts only; it does
+not print order data. Exit `2` means candidates were skipped due to a race or a
+now-invalid policy state. Exit `1` means stop and investigate an unexpected
+failure; do not repeatedly rerun it to mask an inventory, slot, or audit error.
+
+There is no database rollback that re-reserves a cancelled order. To correct a
+bad expiry, preserve audit evidence, restore only through the approved
+incident/forward-fix process, and require a new customer checkout for stock.
+Customer notification is an Operations/support action until a separate
+notification design is approved.
 
 ## Restore drill
 

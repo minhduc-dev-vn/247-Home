@@ -56,7 +56,8 @@ CMD ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
 
 FROM dependencies AS demo-tools
 
-ENV NODE_ENV=development
+ENV NODE_ENV=development \
+    DATABASE_URL=postgresql://build-only:build-only@127.0.0.1:5432/build-only
 
 COPY --chown=node:node . .
 RUN pnpm db:generate
@@ -77,6 +78,9 @@ LABEL org.opencontainers.image.created=$BUILD_TIMESTAMP \
       org.opencontainers.image.version=$APP_VERSION
 
 ENV HOSTNAME=0.0.0.0 \
+    APP_VERSION=$APP_VERSION \
+    BUILD_TIMESTAMP=$BUILD_TIMESTAMP \
+    GIT_SHA=$GIT_SHA \
     NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production \
     PORT=3000

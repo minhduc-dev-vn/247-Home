@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  createCatalogImageStorage,
   createEvidenceStorage,
   LocalStorageAdapter,
   S3ObjectStorageAdapter,
@@ -71,5 +72,34 @@ describe('evidence storage factory', () => {
         STORAGE_ENDPOINT: 'https://objects.staging.example',
       }),
     ).toThrow('STORAGE_ENDPOINT');
+  });
+});
+
+describe('catalog image storage factory', () => {
+  it('uses local storage only outside production', () => {
+    expect(createCatalogImageStorage({ NODE_ENV: 'test' })).toBeInstanceOf(
+      LocalStorageAdapter,
+    );
+    expect(() =>
+      createCatalogImageStorage({
+        NODE_ENV: 'production',
+        CATALOG_IMAGE_STORAGE_PROVIDER: 'local',
+      }),
+    ).toThrow('disabled in production');
+  });
+
+  it('fails closed in production until an S3-compatible provider is configured', () => {
+    expect(() => createCatalogImageStorage({ NODE_ENV: 'production' })).toThrow(
+      'CATALOG_IMAGE_STORAGE_PROVIDER',
+    );
+
+    expect(
+      createCatalogImageStorage({
+        NODE_ENV: 'production',
+        CATALOG_IMAGE_STORAGE_PROVIDER: 's3',
+        CATALOG_IMAGE_STORAGE_BUCKET: 'private-catalog',
+        STORAGE_REGION: 'ap-southeast-1',
+      }),
+    ).toBeInstanceOf(S3ObjectStorageAdapter);
   });
 });

@@ -17,12 +17,16 @@ export const technicianActionSchema = z
   })
   .strict();
 
+// Query schemas strip unknown keys instead of rejecting them: shared links
+// arrive carrying tracking parameters (fbclid, utm_*, gclid) that neither the
+// user nor this application put there. The schemas extended from this one
+// inherit that behaviour. Body schemas stay strict.
 export const paginationSchema = z
   .object({
     cursor: cuid.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
-  .strict();
+  .strip();
 
 export const operationsOrderQuerySchema = paginationSchema.extend({
   status: z.nativeEnum(OrderStatus).optional(),
@@ -47,7 +51,7 @@ export const eligibleTechnicianQuerySchema = paginationSchema
     appointmentId: cuid,
     search: z.string().trim().min(1).max(100).optional(),
   })
-  .strict();
+  .strip();
 export const evidenceSchema = z
   .object({
     filename: z.string().trim().min(5).max(160),

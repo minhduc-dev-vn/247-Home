@@ -20,9 +20,9 @@ describe('customer order status presentation', () => {
     );
     for (const status of Object.values(OrderStatus)) {
       expect(orderStatusPresentation[status].label).not.toBe(status);
-      expect(orderStatusPresentation[status].description.length).toBeGreaterThan(
-        10,
-      );
+      expect(
+        orderStatusPresentation[status].description.length,
+      ).toBeGreaterThan(10);
     }
   });
 

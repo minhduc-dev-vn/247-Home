@@ -8,6 +8,9 @@ const moneyString = z
 const shortText = (max: number) => z.string().trim().min(1).max(max);
 const optionalMoneyString = moneyString.optional();
 
+// Query schemas strip unknown keys instead of rejecting them: shared links
+// arrive carrying tracking parameters (fbclid, utm_*, gclid) that neither the
+// user nor this application put there. Body schemas stay strict.
 export const productListQuerySchema = z
   .object({
     category: z.nativeEnum(ProductCategory).optional(),
@@ -17,21 +20,21 @@ export const productListQuerySchema = z
     cursor: z.string().cuid().optional(),
     limit: z.coerce.number().int().min(1).max(24).default(12),
   })
-  .strict();
+  .strip();
 
 export const adminListQuerySchema = z
   .object({
     cursor: z.string().cuid().optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
   })
-  .strict();
+  .strip();
 
 export const serviceAreaListQuerySchema = z
   .object({
     cursor: z.string().cuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
-  .strict();
+  .strip();
 
 export const productInputSchema = z
   .object({

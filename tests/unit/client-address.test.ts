@@ -68,20 +68,13 @@ describe('trustedClientAddress', () => {
     ).toBe('untrusted-client');
   });
 
-  it('uses the first Render forwarded address when the Render contract is enabled', () => {
+  it('fails closed for the legacy Render forwarding-header profile', () => {
     process.env.TRUST_PROXY_HEADERS = 'true';
     process.env.TRUSTED_PROXY_PROVIDER = 'render';
     expect(
       trustedClientAddress(
         new Request('https://example.test', {
           headers: { 'x-forwarded-for': '203.0.113.99, 10.0.0.2' },
-        }),
-      ),
-    ).toBe('203.0.113.99');
-    expect(
-      trustedClientAddress(
-        new Request('https://example.test', {
-          headers: { 'x-forwarded-for': 'not-an-ip, 10.0.0.2' },
         }),
       ),
     ).toBe('untrusted-client');

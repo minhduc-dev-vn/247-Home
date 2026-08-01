@@ -25,6 +25,14 @@ enum RoleCode {
   ADMIN
 }
 
+enum PasswordResetDeliveryStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -677,14 +685,35 @@ model UserRole {
 }
 
 model PasswordResetToken {
-  id        String    @id @default(cuid())
-  userId    String    @map("user_id")
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String                @id @default(cuid())
+  userId    String                @map("user_id")
+  tokenHash String                @unique @map("token_hash")
+  expiresAt DateTime              @map("expires_at")
+  usedAt    DateTime?             @map("used_at")
+  createdAt DateTime              @default(now()) @map("created_at")
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delivery  PasswordResetDelivery?
 
   @@index([userId, expiresAt])
   @@map("password_reset_tokens")
+}
+
+model PasswordResetDelivery {
+  id                         String                      @id @default(cuid())
+  passwordResetTokenId       String                      @unique @map("password_reset_token_id")
+  recipientEmail             String                      @map("recipient_email")
+  encryptedToken             String                      @map("encrypted_token")
+  status                     PasswordResetDeliveryStatus @default(PENDING)
+  attempts                   Int                         @default(0)
+  nextAttemptAt              DateTime                    @default(now()) @map("next_attempt_at")
+  processingToken            String?                     @map("processing_token")
+  processingLeaseExpiresAt   DateTime?                   @map("processing_lease_expires_at")
+  deliveredAt                DateTime?                   @map("delivered_at")
+  lastFailureCode            String?                     @map("last_failure_code")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  passwordResetToken         PasswordResetToken          @relation(fields: [passwordResetTokenId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt, createdAt])
+  @@map("password_reset_deliveries")
 }

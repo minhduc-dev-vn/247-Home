@@ -1,12 +1,12 @@
 # 247 Home
 
-> Release update (2026-07-23): the repository now includes Customer Warranty
-> and VNPay integration code added after the 2026-07-15 MVP freeze. VNPay is
-> **not approved for production** until real sandbox qualification, reconciliation
-> alert verification, and Finance/Security approval are complete. Production
-> uses AWS WAF as the shared rate limiter; local/test retain the in-memory
-> adapter. Current P0 status and evidence are tracked in
-> [`docs/P0_REMEDIATION_EVIDENCE.md`](docs/P0_REMEDIATION_EVIDENCE.md).
+> Quality update (2026-08-01): current repository-local release evidence is
+> recorded in [`docs/RELEASE_READINESS_RECORD.md`](docs/RELEASE_READINESS_RECORD.md)
+> and [`docs/PHASE_7_EXECUTION_REPORT.md`](docs/PHASE_7_EXECUTION_REPORT.md).
+> AWS/CloudFront/WAF qualification is deferred. Render remains a
+> single-instance demo/staging profile, not a production release target. VNPay
+> is not approved for public use until sandbox qualification, reconciliation
+> alert verification, and Finance/Security approval are complete.
 
 Ứng dụng thương mại điện tử bán thiết bị nhà thông minh và an ninh gia đình kèm dịch vụ lắp đặt tận nơi.
 
@@ -46,8 +46,9 @@ Requirements rộng hơn là roadmap, không phải claim rằng endpoint đã t
 - Xem hàng đợi và chi tiết bảo hành đã có sẵn (read-only).
 - Xem audit log theo quyền.
 
-Deferred khỏi staging MVP: customer warranty API, warranty mutation, customer
-order cancellation, admin role management và admin installation-slot CRUD.
+Deferred khỏi staging MVP: admin role management và admin installation-slot
+CRUD. Customer order cancellation is available only through the server-side
+state policy documented in `docs/ORDER_STATE_MACHINE.md`.
 
 Ngoài MVP: payment gateway thật, lưu thông tin thẻ, microservices, mobile native và production deployment.
 
@@ -121,6 +122,7 @@ Role không thay ownership/assignment check. UI guard không thay server authori
 
 | Tài liệu                                                                                                       | Nội dung                                                 |
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [`docs/README.md`](docs/README.md)                                                                             | Mục lục chuẩn, trạng thái và quy ước tài liệu            |
 | [`docs/PRODUCT_REQUIREMENTS.md`](docs/PRODUCT_REQUIREMENTS.md)                                                 | Mục tiêu, scope, yêu cầu và P0/P1/P2                     |
 | [`docs/USER_FLOWS.md`](docs/USER_FLOWS.md)                                                                     | Luồng customer/admin/technician và failure paths         |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                                                 | Modular monolith, module boundary, transaction, security |
@@ -263,8 +265,11 @@ Các lệnh canonical:
 ```powershell
 pnpm lint
 pnpm typecheck
+pnpm format:check
+pnpm audit:prod
 pnpm test
 pnpm test:integration
+pnpm test:migration
 pnpm test:e2e
 pnpm build
 ```
@@ -301,7 +306,16 @@ Xem tài khoản, scenario và troubleshooting tại
 | `bcryptjs`                                           | Hash/verify password với bcrypt, thay vì tự viết crypto hoặc lưu plaintext. Chỉ chạy server-side; license BSD-3-Clause, API nhỏ và mature. Rollback chỉ cùng migration/application tương thích; không hạ hash về plaintext.                                                                                                                       |
 | `react-hook-form`, `@hookform/resolvers`             | Quản lý form authentication và Zod UX validation; server vẫn validate độc lập. Alternative là controlled form tự viết. Runtime chỉ trên trang form; license MIT, dự án duy trì tích cực. Gỡ bằng React form thuần.                                                                                                                                |
 
-Auth.js dùng Credentials provider trong local/test. JWT session được so `authVersion` tại server để password reset hoặc thay đổi role sau này vô hiệu hóa session cũ; provider email production, MFA và retention policy vẫn cần review trước production.
+Auth.js dùng Credentials provider trong local/test. JWT session được so `authVersion` tại server để password reset hoặc thay đổi role sau này vô hiệu hóa session cũ. Password reset dùng PostgreSQL outbox: local/test ghi vào `.local-outbox/` khi chạy worker, còn runtime production cần adapter Resend cùng scheduler/cron đã được cấu hình trong secret store.
+
+```powershell
+pnpm password-reset:deliver -- --limit 20
+```
+
+Không đưa `RESEND_API_KEY` hoặc `PASSWORD_RESET_FROM` vào Git. Xem
+[`docs/decisions/ADR-015-password-reset-delivery-outbox.md`](docs/decisions/ADR-015-password-reset-delivery-outbox.md)
+và [`docs/SECURITY_INCIDENT_AND_RECOVERY.md`](docs/SECURITY_INCIDENT_AND_RECOVERY.md)
+trước khi bật worker ở shared environment.
 
 ## 12. Quy tắc đóng góp
 
@@ -419,9 +433,9 @@ The migration is additive and does not alter Identity tables. Do not delete cata
   [`docs/STAGING_SECRET_MANAGEMENT.md`](docs/STAGING_SECRET_MANAGEMENT.md).
 - The local/test rate limiter is in-memory. Production must inject a shared
   `RateLimiter` adapter before horizontal scaling.
-- Customer warranty create/list/detail, warranty state mutations, customer
-  order cancellation, admin role management and admin installation-slot CRUD
-  are deferred khỏi staging MVP và không được expose bởi route hiện tại.
+- Admin role management and admin installation-slot CRUD are deferred khỏi
+  staging MVP. Customer cancellation is exposed only for policy-eligible owned
+  pending orders; warranty scope is documented in `docs/API_CONTRACT.md`.
 
 ## 20. Scope after Slice 3
 

@@ -308,11 +308,7 @@ export async function createWarrantyRequest(
   let requestFingerprint: string | undefined;
   try {
     return await prisma.$transaction(async (tx) => {
-      await lockWarrantyCreateIdempotency(
-        tx,
-        customer.userId,
-        idempotencyHash,
-      );
+      await lockWarrantyCreateIdempotency(tx, customer.userId, idempotencyHash);
       const orderItem = await resolveWarrantyOrderItem(
         tx,
         customer.userId,

@@ -12,13 +12,16 @@ export const warrantyIssueTypes = [
   'OTHER',
 ] as const;
 
+// Query schemas strip unknown keys instead of rejecting them: shared links
+// arrive carrying tracking parameters (fbclid, utm_*, gclid) that neither the
+// user nor this application put there. Body schemas stay strict.
 export const warrantyListSchema = z
   .object({
     status: z.enum(warrantyStates).optional(),
     cursor: z.string().cuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
-  .strict();
+  .strip();
 
 const warrantyCreateFields = {
   coverageType: z.enum(warrantyCoverageTypes).default('DEVICE'),
@@ -73,7 +76,7 @@ export const warrantyAuditListSchema = z
     cursor: z.string().cuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(25),
   })
-  .strict();
+  .strip();
 
 export type WarrantyCreateInput = z.output<typeof warrantyCreateSchema>;
 export type WarrantyStateInput = z.output<typeof warrantyStateSchema>;

@@ -14,13 +14,19 @@ Threat model áp dụng cho MVP modular monolith:
 
 Ngoài phạm vi hiện tại:
 
-- Production infrastructure, cloud, WAF, CDN và disaster recovery.
-- Payment gateway và card processing.
-- Email/SMS/object storage.
+- AWS production infrastructure, CloudFront/WAF/CDN và disaster recovery. Các
+  provider controls này đang được hoãn, không được suy diễn là đã triển khai.
+- VNPay public enablement, card processing và reconciliation sandbox có xác
+  nhận từ provider. Code/payment policy có thể tồn tại nhưng chưa được phê duyệt
+  cho tiền thật.
+- Mail/SMS provider thật và object-storage provider thật. Password-reset outbox
+  và S3-compatible storage port đã có trong repository; credential, retention,
+  malware scanning và vận hành provider vẫn cần review/approval.
 - Mobile native.
 - Microservices.
 
-Threat model phải review lại trước production, thêm provider ngoài hoặc xử lý upload.
+Threat model phải review lại trước production, thêm provider ngoài, thay đổi
+topology ingress hoặc mở rộng khả năng upload.
 
 ## 2. Tài sản cần bảo vệ
 
@@ -134,7 +140,7 @@ Mức rủi ro:
 | T-30 | Error lộ stack/SQL/existence | I | Medium | Error mapper; request ID; 404 scope; production-safe response | Error snapshot tests |
 | T-31 | Clickjacking admin | S/T | Medium | `frame-ancestors 'none'`/X-Frame-Options | Header test |
 | T-32 | Browser content sniffing/referrer leak | I | Medium | `nosniff`, strict referrer policy, permissions policy | Header test |
-| T-33 | Warranty text chứa PII/malware link | I/T | Medium | Plain text, length limit, output encoding; upload ngoài MVP | Payload tests |
+| T-33 | Warranty text hoặc evidence chứa PII/malware | I/T | Medium | Plain text, length limit, output encoding; private storage, MIME/extension/signature/size validation; malware scan/retention cần provider review | Payload and storage authorization tests |
 | T-34 | Stale role trong JWT/session | E | High | DB sessions hoặc authVersion validation/invalidation | Revoke-role integration |
 | T-35 | Dev/test fixture dùng PII thật | I | Medium | Synthetic fixtures; review seed; no DB dumps committed | Repository scan |
 
@@ -204,7 +210,8 @@ Control: ưu tiên database session hoặc kiểm `authVersion`; invalidate sess
 
 ## 7. Authentication controls
 
-- Chọn Auth.js provider trước implementation.
+- Auth.js Credentials provider là lựa chọn hiện tại cho local/demo; mọi thay
+  provider hoặc production session policy phải có ADR/security review.
 - Không tự viết crypto/session.
 - Nếu Credentials: password hash chuyên dụng, password policy và recovery flow cần security review.
 - Generic login/reset response chống enumeration.
@@ -316,8 +323,10 @@ Trước nghiệm thu MVP:
 
 ## 16. Residual risk và điểm cần duyệt
 
-1. Auth provider/session strategy chưa chọn.
-2. Rate-limit production storage chưa thiết kế vì không deploy production.
+1. Auth.js Credentials/session strategy đã có cho local/demo; MFA, re-authentication
+   và step-up cho thao tác ADMIN nhạy cảm chưa được duyệt cho production.
+2. Rate-limit shared/edge production chưa được chứng minh. Render demo chạy một
+   instance với common fallback bucket; AWS WAF/CloudFront evidence đang hoãn.
 3. Retention/anonymization PII và audit chưa có quyết định pháp lý.
 4. Insider payment/inventory có cần dual approval.
 5. Upload ảnh warranty dùng private storage port, key server-side, MIME/extension/
@@ -325,7 +334,8 @@ Trước nghiệm thu MVP:
    persistence lỗi. Malware scanning và retention lifecycle vẫn cần duyệt trước
    production; hiện chỉ nhận JPEG/PNG/WebP, không nhận tài liệu chủ động/PDF.
 6. Address normalization provider có thể thêm SSRF/privacy/vendor risk.
-7. CSP chính xác phụ thuộc Auth provider/image source.
+7. CSP chính xác phụ thuộc Auth.js, image source và provider integration cuối.
 8. Recovery/MFA/step-up cho ADMIN chưa chốt.
 9. Payment transfer reference có mức nhạy cảm và mask thế nào.
-10. Backup/encryption-at-rest thuộc production review sau.
+10. Backup/encryption-at-rest, restore drill và disaster recovery thuộc production
+    provider review sau; không có AWS pass claim trong repository evidence.

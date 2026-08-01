@@ -6,6 +6,7 @@ import { Container } from '@/components/layout/container';
 import { Breadcrumb } from '@/components/navigation/breadcrumb';
 import { getCart, listAddresses } from '@/modules/commerce';
 import { getOwnProfile } from '@/modules/identity';
+import { isVnpayPubliclyEnabled } from '@/modules/payment';
 import { requirePageActor } from '@/shared/auth/server';
 
 export const dynamic = 'force-dynamic';
@@ -55,9 +56,7 @@ export default async function CheckoutPage() {
             cart={cart}
             customer={{ email: profile.email, name: profile.name }}
             initialAddresses={addresses.items}
-            onlinePaymentEnabled={Boolean(
-              process.env.VNPAY_TMN_CODE && process.env.VNPAY_HASH_SECRET,
-            )}
+            onlinePaymentEnabled={isVnpayPubliclyEnabled()}
           />
         </Container>
       </section>

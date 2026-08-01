@@ -6,10 +6,7 @@ describe('health route deployment metadata', () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it('returns the Render revision without exposing the full runtime environment', async () => {
-    vi.stubEnv(
-      'RENDER_GIT_COMMIT',
-      'c3d0af9dc53cd5aaed4bfaf3d90a16ef02d4ae9f',
-    );
+    vi.stubEnv('RENDER_GIT_COMMIT', 'c3d0af9dc53cd5aaed4bfaf3d90a16ef02d4ae9f');
 
     const response = GET(new Request('http://localhost/api/health'));
 

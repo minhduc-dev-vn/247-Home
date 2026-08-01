@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   assertEvidenceStorageKey,
   createEvidenceStorageKey,
-  maximumEvidenceBytes,
+  maximumBytesForStorageKey,
   validateEvidenceUpload,
 } from '@/modules/storage/evidence-validation';
 import {
@@ -91,7 +91,8 @@ export class LocalStorageAdapter implements PrivateObjectStorage {
 
   async download(storageKey: string): Promise<Buffer | null> {
     this.assertEnabled();
-    const location = this.resolve(storageKey);
+    const safeKey = assertEvidenceStorageKey(storageKey);
+    const location = this.resolve(safeKey);
     let content: Buffer;
     try {
       content = await readFile(location);
@@ -99,7 +100,7 @@ export class LocalStorageAdapter implements PrivateObjectStorage {
       if (isMissingFile(error)) return null;
       throw error;
     }
-    if (content.length > maximumEvidenceBytes)
+    if (content.length > maximumBytesForStorageKey(safeKey))
       throw new StorageConfigurationError('Stored evidence is oversized.');
     return content;
   }

@@ -1,33 +1,28 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readdir, rm } from 'node:fs/promises';
-import path from 'node:path';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { PasswordResetDeliveryStatus } from '@prisma/client';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { POST as forgotPasswordPost } from '../../app/api/v1/auth/forgot-password/route';
 import { POST as registerPost } from '../../app/api/v1/auth/register/route';
 import {
   authenticateWithPassword,
+  deliverPasswordResetEmail,
   getActiveActor,
   getOwnProfile,
   registerCustomer,
+  requestPasswordReset,
   resetPassword,
 } from '@/modules/identity';
 import { clearRateLimitsForTest } from '@/modules/identity/infrastructure/rate-limiter';
+import {
+  decryptPasswordResetToken,
+  encryptPasswordResetToken,
+} from '@/modules/identity/infrastructure/password-reset-outbox-crypto';
+import { type PasswordResetEmail } from '@/modules/identity/infrastructure/password-reset-mailer';
 import { prisma } from '@/shared/db/client';
 
 const createdEmails: string[] = [];
-const outboxDirectory = path.join(process.cwd(), '.local-outbox');
-let initialOutboxFiles = new Set<string>();
-
-async function outboxFiles(): Promise<string[]> {
-  try {
-    return await readdir(outboxDirectory);
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
-}
 
 function nextEmail(): string {
   const email = `identity-${randomUUID()}@example.test`;
@@ -46,29 +41,38 @@ async function createCustomer() {
   return { actor, email, password };
 }
 
-describe('identity persistence and authorization', () => {
-  beforeAll(async () => {
-    initialOutboxFiles = new Set(await outboxFiles());
+async function createDeliveredResetToken(input: {
+  userId: string;
+  email: string;
+}) {
+  const token =
+    randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
+  const tokenHash = createHash('sha256').update(token).digest('hex');
+  await prisma.passwordResetToken.create({
+    data: {
+      userId: input.userId,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60_000),
+      delivery: {
+        create: {
+          recipientEmail: input.email,
+          encryptedToken: encryptPasswordResetToken(token),
+          status: PasswordResetDeliveryStatus.DELIVERED,
+          deliveredAt: new Date(),
+        },
+      },
+    },
   });
+  return { token, tokenHash };
+}
 
+describe('identity persistence and authorization', () => {
   beforeEach(() => clearRateLimitsForTest());
 
   afterAll(async () => {
     const cleanupErrors: unknown[] = [];
     try {
       await prisma.user.deleteMany({ where: { email: { in: createdEmails } } });
-    } catch (error: unknown) {
-      cleanupErrors.push(error);
-    }
-    try {
-      const createdOutboxFiles = (await outboxFiles()).filter(
-        (filename) => !initialOutboxFiles.has(filename),
-      );
-      await Promise.all(
-        createdOutboxFiles.map((filename) =>
-          rm(path.join(outboxDirectory, filename), { force: true }),
-        ),
-      );
     } catch (error: unknown) {
       cleanupErrors.push(error);
     }
@@ -120,6 +124,66 @@ describe('identity persistence and authorization', () => {
     ).resolves.toMatchObject({ roles: ['CUSTOMER'] });
   });
 
+  it('returns the stable registration error for a duplicate email', async () => {
+    const email = nextEmail();
+    const body = JSON.stringify({
+      name: 'Duplicate Registration Customer',
+      email,
+      password: 'Duplicate247!',
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      Origin: 'http://localhost:3000',
+    };
+
+    const first = await registerPost(
+      new Request('http://localhost:3000/api/v1/auth/register', {
+        method: 'POST',
+        headers,
+        body,
+      }),
+    );
+    const duplicate = await registerPost(
+      new Request('http://localhost:3000/api/v1/auth/register', {
+        method: 'POST',
+        headers,
+        body,
+      }),
+    );
+
+    expect(first.status).toBe(201);
+    expect(duplicate.status).toBe(422);
+    await expect(duplicate.json()).resolves.toMatchObject({
+      error: {
+        code: 'VALIDATION_ERROR',
+        requestId: expect.stringMatching(/^req_/),
+      },
+    });
+  });
+
+  it('rejects a cross-origin registration request before it creates a user', async () => {
+    const email = nextEmail();
+    const response = await registerPost(
+      new Request('http://localhost:3000/api/v1/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://evil.example',
+        },
+        body: JSON.stringify({
+          name: 'Origin Rejection Customer',
+          email,
+          password: 'Origin247!',
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(
+      prisma.user.findUnique({ where: { email } }),
+    ).resolves.toBeNull();
+  });
+
   it('handles concurrent customer registrations without duplicating the system role', async () => {
     const emails = [nextEmail(), nextEmail()];
     const responses = await Promise.all(
@@ -165,16 +229,9 @@ describe('identity persistence and authorization', () => {
 
   it('expires all reset tokens and invalidates the previous password session version', async () => {
     const { actor, email, password } = await createCustomer();
-    const token =
-      randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
-    const tokenHash = createHash('sha256').update(token).digest('hex');
-
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: actor.userId,
-        tokenHash,
-        expiresAt: new Date(Date.now() + 60_000),
-      },
+    const { token, tokenHash } = await createDeliveredResetToken({
+      userId: actor.userId,
+      email,
     });
     await resetPassword({ token, password: 'ReplacementPassword-247' });
 
@@ -194,18 +251,11 @@ describe('identity persistence and authorization', () => {
 
   it('allows a password reset token to be claimed exactly once under concurrency', async () => {
     const { actor, email } = await createCustomer();
-    const token =
-      randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', '');
-    const tokenHash = createHash('sha256').update(token).digest('hex');
-    const passwords = ['ConcurrentPassword-A247', 'ConcurrentPassword-B247'];
-
-    await prisma.passwordResetToken.create({
-      data: {
-        userId: actor.userId,
-        tokenHash,
-        expiresAt: new Date(Date.now() + 60_000),
-      },
+    const { token, tokenHash } = await createDeliveredResetToken({
+      userId: actor.userId,
+      email,
     });
+    const passwords = ['ConcurrentPassword-A247', 'ConcurrentPassword-B247'];
 
     const results = await Promise.allSettled(
       passwords.map((password) => resetPassword({ token, password })),
@@ -234,8 +284,122 @@ describe('identity persistence and authorization', () => {
     ).resolves.toBe(0);
   });
 
+  it('keeps a reset token unusable until the durable delivery succeeds', async () => {
+    const { actor, email } = await createCustomer();
+    await requestPasswordReset(email);
+    const delivery = await prisma.passwordResetDelivery.findFirstOrThrow({
+      where: { passwordResetToken: { is: { userId: actor.userId } } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        encryptedToken: true,
+        passwordResetToken: { select: { tokenHash: true } },
+      },
+    });
+    const sent: PasswordResetEmail[] = [];
+    const queuedToken = decryptPasswordResetToken(delivery.encryptedToken);
+
+    expect(delivery.encryptedToken).not.toContain(queuedToken);
+    await expect(
+      resetPassword({
+        token: queuedToken,
+        password: 'BeforeDelivery247!',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_RESET_TOKEN' });
+    await expect(
+      deliverPasswordResetEmail(delivery.id, {
+        mailer: { send: async (message) => void sent.push(message) },
+      }),
+    ).resolves.toBe('delivered');
+
+    expect(sent).toHaveLength(1);
+    const token = new URL(sent[0].resetUrl).searchParams.get('token');
+    expect(token).toMatch(/^[A-Za-z0-9_-]{32,}$/);
+    await expect(
+      resetPassword({ token: token ?? '', password: 'AfterDelivery247!' }),
+    ).resolves.toBeUndefined();
+    await expect(
+      prisma.passwordResetDelivery.findUniqueOrThrow({
+        where: { id: delivery.id },
+      }),
+    ).resolves.toMatchObject({
+      status: PasswordResetDeliveryStatus.DELIVERED,
+      deliveredAt: expect.any(Date),
+    });
+  });
+
+  it('claims a queued reset delivery exactly once under concurrency', async () => {
+    const { actor, email } = await createCustomer();
+    await requestPasswordReset(email);
+    const delivery = await prisma.passwordResetDelivery.findFirstOrThrow({
+      where: { passwordResetToken: { is: { userId: actor.userId } } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    const sent: PasswordResetEmail[] = [];
+    const mailer = {
+      send: async (message: PasswordResetEmail) => void sent.push(message),
+    };
+
+    const outcomes = await Promise.all([
+      deliverPasswordResetEmail(delivery.id, { mailer }),
+      deliverPasswordResetEmail(delivery.id, { mailer }),
+    ]);
+
+    expect(outcomes.sort()).toEqual(['delivered', 'skipped']);
+    expect(sent).toHaveLength(1);
+    await expect(
+      prisma.passwordResetDelivery.findUniqueOrThrow({
+        where: { id: delivery.id },
+      }),
+    ).resolves.toMatchObject({
+      status: PasswordResetDeliveryStatus.DELIVERED,
+      attempts: 1,
+    });
+  });
+
+  it('keeps a token unusable after the mail provider rejects delivery', async () => {
+    const { actor, email } = await createCustomer();
+    await requestPasswordReset(email);
+    const delivery = await prisma.passwordResetDelivery.findFirstOrThrow({
+      where: { passwordResetToken: { is: { userId: actor.userId } } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, encryptedToken: true, passwordResetTokenId: true },
+    });
+    const queuedToken = decryptPasswordResetToken(delivery.encryptedToken);
+
+    await expect(
+      deliverPasswordResetEmail(delivery.id, {
+        mailer: {
+          send: async () => {
+            throw new Error('provider unavailable');
+          },
+        },
+      }),
+    ).resolves.toBe('failed');
+    await expect(
+      prisma.passwordResetDelivery.findUniqueOrThrow({
+        where: { id: delivery.id },
+      }),
+    ).resolves.toMatchObject({
+      status: PasswordResetDeliveryStatus.FAILED,
+      lastFailureCode: 'MAILER_DELIVERY_FAILED',
+    });
+    await expect(
+      resetPassword({
+        token: queuedToken,
+        password: 'FailedDelivery247!',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_RESET_TOKEN' });
+    await expect(
+      prisma.passwordResetToken.findUniqueOrThrow({
+        where: { id: delivery.passwordResetTokenId },
+      }),
+    ).resolves.toMatchObject({ usedAt: null });
+  });
+
   it('does not distinguish reset requests for known and unknown email addresses', async () => {
-    const { email } = await createCustomer();
+    const { actor, email } = await createCustomer();
     const unknownEmail = nextEmail();
 
     const knownResponse = await forgotPasswordPost(
@@ -259,13 +423,18 @@ describe('identity persistence and authorization', () => {
       }),
     );
 
-    expect(knownResponse.status).toBe(200);
-    expect(unknownResponse.status).toBe(200);
+    expect(knownResponse.status).toBe(202);
+    expect(unknownResponse.status).toBe(202);
     await expect(knownResponse.json()).resolves.toMatchObject({
       data: { accepted: true },
     });
     await expect(unknownResponse.json()).resolves.toMatchObject({
       data: { accepted: true },
     });
+    await expect(
+      prisma.passwordResetDelivery.count({
+        where: { passwordResetToken: { is: { userId: actor.userId } } },
+      }),
+    ).resolves.toBe(1);
   });
 });

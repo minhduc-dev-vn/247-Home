@@ -12,13 +12,15 @@ import { CatalogError } from '@/modules/catalog';
 import { lockPayment } from '@/modules/commerce/infrastructure/order-repository';
 import { type IdentityActor } from '@/modules/identity';
 import {
-  canApplyWebhookOutcome,
   canStartOnlinePayment,
+  decideVnpayWebhookDisposition,
+  isActiveOnlinePaymentSession,
   webhookPaymentOutcome,
 } from '@/modules/payment/domain/payment-lifecycle';
 import {
   buildVnpayPaymentUrl,
   getVnpayConfig,
+  isVnpayPubliclyEnabled,
   parseVnpayDate,
   toVnpayDate,
   verifyVnpaySignature,
@@ -29,6 +31,10 @@ import { type PaymentCreateInput } from '@/modules/payment/presentation/schemas'
 import { prisma } from '@/shared/db/client';
 
 const sessionMinutes = 15;
+const activeSessionStatuses = [
+  PaymentSessionStatus.CREATED,
+  PaymentSessionStatus.PENDING,
+];
 
 function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -55,6 +61,7 @@ function paymentDescription(orderNumber: string): string {
 
 function sessionDto(
   session: {
+    createdAt: Date;
     id: string;
     providerReference: string;
     expiresAt: Date;
@@ -68,7 +75,6 @@ function sessionDto(
   clientIp: string,
 ) {
   const config = getVnpayConfig();
-  const createdAt = new Date();
   const parameters: VnpayParameters = {
     vnp_Version: '2.1.0',
     vnp_Command: 'pay',
@@ -81,7 +87,7 @@ function sessionDto(
     vnp_Locale: 'vn',
     vnp_ReturnUrl: config.returnUrl,
     vnp_IpAddr: normalizedClientIp(clientIp),
-    vnp_CreateDate: toVnpayDate(createdAt),
+    vnp_CreateDate: toVnpayDate(session.createdAt),
     vnp_ExpireDate: toVnpayDate(session.expiresAt),
   };
   return {
@@ -103,6 +109,8 @@ export async function createOnlinePaymentSession(
   requestId: string,
 ) {
   const customer = requireCustomer(actor);
+  if (!isVnpayPubliclyEnabled())
+    throw new CatalogError('CONFLICT', 'ONLINE_PAYMENT_UNAVAILABLE');
   const keyHash = hash(idempotencyKey);
   const fingerprint = hash(JSON.stringify(input));
   const reference = providerReference();
@@ -163,8 +171,46 @@ export async function createOnlinePaymentSession(
     if (previous) {
       if (previous.requestFingerprint !== fingerprint)
         throw new CatalogError('IDEMPOTENCY_CONFLICT');
-      return { replayed: true, session: previous };
+      if (
+        isActiveOnlinePaymentSession({
+          expiresAt: previous.expiresAt,
+          now: new Date(),
+          status: previous.status,
+        })
+      )
+        return { replayed: true, session: previous };
+      throw new CatalogError('CONFLICT', 'PAYMENT_SESSION_NOT_REUSABLE');
     }
+
+    const now = new Date();
+    const activeSession = await transaction.paymentSession.findFirst({
+      where: {
+        paymentId: payment.id,
+        provider: PaymentMethod.VNPAY,
+        status: { in: activeSessionStatuses },
+        expiresAt: { gt: now },
+      },
+      select: { expiresAt: true, id: true, status: true },
+    });
+    if (
+      activeSession &&
+      isActiveOnlinePaymentSession({
+        expiresAt: activeSession.expiresAt,
+        now,
+        status: activeSession.status,
+      })
+    )
+      throw new CatalogError('CONFLICT', 'ACTIVE_PAYMENT_SESSION');
+
+    const expired = await transaction.paymentSession.updateMany({
+      where: {
+        paymentId: payment.id,
+        provider: PaymentMethod.VNPAY,
+        status: { in: activeSessionStatuses },
+        expiresAt: { lte: now },
+      },
+      data: { completedAt: now, status: PaymentSessionStatus.EXPIRED },
+    });
 
     const updated = await transaction.payment.updateMany({
       where: {
@@ -209,6 +255,7 @@ export async function createOnlinePaymentSession(
           version: payment.version + 1,
           provider: PaymentMethod.VNPAY,
           sessionId: session.id,
+          expiredSessionCount: expired.count,
         },
         requestId,
       },
@@ -305,13 +352,16 @@ export async function processVnpayWebhook(
   const responseCode = parameters.vnp_ResponseCode;
   const transactionStatus = parameters.vnp_TransactionStatus;
   const rawAmount = parameters.vnp_Amount;
+  const providerCurrency = parameters.vnp_CurrCode ?? 'VND';
   if (
     !reference ||
     !providerTransactionId ||
     !responseCode ||
     !transactionStatus ||
     !rawAmount ||
-    !/^\d{1,14}$/.test(rawAmount)
+    !/^\d{1,14}$/.test(rawAmount) ||
+    /^0+$/.test(rawAmount) ||
+    !/^[A-Z]{3}$/.test(providerCurrency)
   )
     throw new CatalogError('CONFLICT', 'INVALID_PROVIDER_PAYLOAD');
 
@@ -321,33 +371,35 @@ export async function processVnpayWebhook(
   return prisma.$transaction(async (transaction) => {
     const session = await transaction.paymentSession.findUnique({
       where: { providerReference: reference },
-      select: { id: true, paymentId: true, status: true },
+      select: { id: true, paymentId: true, provider: true, status: true },
     });
-    if (!session) return { rspCode: '01', message: 'Order not found' };
+    if (!session || session.provider !== PaymentMethod.VNPAY)
+      return { rspCode: '01', message: 'Order not found' };
     if (!(await lockPayment(transaction, session.paymentId)))
       return { rspCode: '01', message: 'Order not found' };
 
     const existingEvent = await transaction.paymentWebhookEvent.findUnique({
       where: { eventKey },
-      select: { id: true },
+      select: { outcome: true },
     });
     if (existingEvent)
-      return { rspCode: '02', message: 'Order already confirmed' };
+      return existingEvent.outcome === PaymentWebhookOutcome.REJECTED
+        ? { rspCode: '04', message: 'Invalid payment data' }
+        : { rspCode: '02', message: 'Order already confirmed' };
 
     const payment = await transaction.payment.findUniqueOrThrow({
       where: { id: session.paymentId },
       include: { order: true },
     });
     const providerAmount = BigInt(rawAmount);
+    const now = new Date();
+    const payDate = parseVnpayDate(parameters.vnp_PayDate);
     if (
       payment.method !== PaymentMethod.VNPAY ||
       payment.currency !== 'VND' ||
-      providerAmount !== payment.amount * 100n
-    )
-      return { rspCode: '04', message: 'Invalid amount' };
-
-    const applicable = canApplyWebhookOutcome(payment.status, next);
-    if (!applicable) {
+      providerAmount !== payment.amount * 100n ||
+      providerCurrency !== payment.currency
+    ) {
       await transaction.paymentWebhookEvent.create({
         data: {
           paymentId: payment.id,
@@ -356,19 +408,52 @@ export async function processVnpayWebhook(
           eventKey,
           providerTransactionId,
           amount: providerAmount,
-          currency: payment.currency,
+          currency: providerCurrency,
           responseCode,
           transactionStatus,
-          payDate: parseVnpayDate(parameters.vnp_PayDate),
+          payDate,
+          outcome: PaymentWebhookOutcome.REJECTED,
+          requestId,
+          processedAt: now,
+        },
+      });
+      return { rspCode: '04', message: 'Invalid amount' };
+    }
+
+    const duplicateProviderTransaction = await transaction.payment.findFirst({
+      where: {
+        providerTransactionId,
+        NOT: { id: payment.id },
+      },
+      select: { id: true },
+    });
+    const disposition = decideVnpayWebhookDisposition({
+      current: payment.status,
+      incomingProviderTransactionId: providerTransactionId,
+      next,
+      storedProviderTransactionId: payment.providerTransactionId,
+    });
+    if (duplicateProviderTransaction || disposition.kind !== 'APPLY') {
+      await transaction.paymentWebhookEvent.create({
+        data: {
+          paymentId: payment.id,
+          sessionId: session.id,
+          provider: PaymentMethod.VNPAY,
+          eventKey,
+          providerTransactionId,
+          amount: providerAmount,
+          currency: providerCurrency,
+          responseCode,
+          transactionStatus,
+          payDate,
           outcome: PaymentWebhookOutcome.DUPLICATE,
           requestId,
-          processedAt: new Date(),
+          processedAt: now,
         },
       });
       return { rspCode: '02', message: 'Order already confirmed' };
     }
 
-    const now = new Date();
     const updated = await transaction.payment.updateMany({
       where: {
         id: payment.id,
@@ -425,7 +510,7 @@ export async function processVnpayWebhook(
         eventKey,
         providerTransactionId,
         amount: providerAmount,
-        currency: payment.currency,
+        currency: providerCurrency,
         responseCode,
         transactionStatus,
         payDate: parseVnpayDate(parameters.vnp_PayDate),

@@ -1,4 +1,4 @@
-import { type Prisma, RoleCode } from '@prisma/client';
+import { type Prisma, type PrismaClient, RoleCode } from '@prisma/client';
 
 import { prisma } from '@/shared/db/client';
 
@@ -10,6 +10,8 @@ export type UserWithRoles = Prisma.UserGetPayload<{
   include: typeof userWithRoles;
 }>;
 
+type IdentityDatabaseClient = Pick<PrismaClient, '$transaction'>;
+
 export function findUserByEmail(email: string): Promise<UserWithRoles | null> {
   return prisma.user.findUnique({ where: { email }, include: userWithRoles });
 }
@@ -18,24 +20,28 @@ export function findUserById(id: string): Promise<UserWithRoles | null> {
   return prisma.user.findUnique({ where: { id }, include: userWithRoles });
 }
 
-export function createCustomer(input: {
-  name: string;
-  email: string;
-  passwordHash: string;
-}) {
-  return prisma.$transaction(async (transaction) => {
-    let customerRole = await transaction.role.findUnique({
+export function findPasswordResetUserByEmail(email: string) {
+  return prisma.user.findUnique({
+    where: { email },
+    select: { id: true, email: true, isActive: true },
+  });
+}
+
+export function createCustomer(
+  input: {
+    name: string;
+    email: string;
+    passwordHash: string;
+  },
+  database: IdentityDatabaseClient = prisma,
+) {
+  return database.$transaction(async (transaction) => {
+    const customerRole = await transaction.role.upsert({
       where: { code: RoleCode.CUSTOMER },
+      create: { code: RoleCode.CUSTOMER },
+      update: {},
+      select: { id: true },
     });
-    if (!customerRole) {
-      await transaction.role.createMany({
-        data: [{ code: RoleCode.CUSTOMER }],
-        skipDuplicates: true,
-      });
-      customerRole = await transaction.role.findUniqueOrThrow({
-        where: { code: RoleCode.CUSTOMER },
-      });
-    }
 
     return transaction.user.create({
       data: {

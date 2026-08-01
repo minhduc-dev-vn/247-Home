@@ -13,14 +13,16 @@ The identity slice requires registration, password login, password reset, sessio
 - Store bcrypt password hashes in PostgreSQL; never store or return plaintext passwords.
 - Use Auth.js JWT sessions only in `HttpOnly`, `SameSite=Lax` cookies, with `Secure` enabled in production mode.
 - Include `authVersion` in the session token and compare it to PostgreSQL in every server guard. Password reset and future role mutation increment the version.
-- Use a local filesystem outbox outside version control for reset email simulation. It is unavailable in production mode.
+- Use a local filesystem outbox outside version control only for development/test
+  delivery simulation. Production password-recovery delivery is governed by
+  [ADR-015](ADR-015-password-reset-delivery-outbox.md).
 - Seed only synthetic admin/customer accounts outside production.
 
 ## Consequences
 
 - Credentials provider does not require Auth.js adapter/session tables, so Slice 2 owns only `users`, `roles`, `user_roles` and one-time reset-token hashes.
 - In-memory rate limiting only protects the local single-process environment. A shared rate-limit store is required before production.
-- Production provider, MFA, retention, reset email delivery and CSP nonce policy require a follow-up security review.
+- MFA, retention and CSP nonce policy still require a follow-up security review.
 
 ## Rollback
 

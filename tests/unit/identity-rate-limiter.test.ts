@@ -48,6 +48,8 @@ describe('identity rate limiter', () => {
   it('delegates production enforcement to the shared WAF edge', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('RATE_LIMIT_BACKEND', 'waf');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'true');
+    vi.stubEnv('TRUSTED_PROXY_PROVIDER', 'cloudfront');
     expect(consumeRateLimit('login', 'replica-a')).toEqual({
       allowed: true,
       retryAfterSeconds: 0,
@@ -64,8 +66,7 @@ describe('identity rate limiter', () => {
     vi.stubEnv('DEPLOYMENT_ENV', 'staging');
     vi.stubEnv('RENDER_STAGING_SINGLE_INSTANCE', 'true');
     vi.stubEnv('RATE_LIMIT_BACKEND', 'memory');
-    vi.stubEnv('TRUST_PROXY_HEADERS', 'true');
-    vi.stubEnv('TRUSTED_PROXY_PROVIDER', 'render');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'false');
 
     expect(consumeRateLimit('register', '203.0.113.99')).toEqual({
       allowed: true,
@@ -79,6 +80,17 @@ describe('identity rate limiter', () => {
     delete process.env.LOCAL_DEMO;
     expect(() => consumeRateLimit('login', 'client')).toThrow(
       'RATE_LIMIT_BACKEND=waf',
+    );
+  });
+
+  it('fails closed when the WAF backend is detached from CloudFront ingress', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RATE_LIMIT_BACKEND', 'waf');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'false');
+    delete process.env.TRUSTED_PROXY_PROVIDER;
+
+    expect(() => consumeRateLimit('login', 'client')).toThrow(
+      'CloudFront trusted ingress contract',
     );
   });
 });

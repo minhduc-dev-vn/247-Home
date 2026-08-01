@@ -81,15 +81,13 @@ describe('parseServerEnvironment', () => {
       RENDER: 'true',
       DEPLOYMENT_ENV: 'staging',
       RENDER_STAGING_SINGLE_INSTANCE: 'true',
-      TRUST_PROXY_HEADERS: 'true',
-      TRUSTED_PROXY_PROVIDER: 'render',
+      TRUST_PROXY_HEADERS: 'false',
       RATE_LIMIT_BACKEND: 'memory',
     };
 
     expect(parseServerEnvironment(staging)).toMatchObject({
       DEPLOYMENT_ENV: 'staging',
       RENDER_STAGING_SINGLE_INSTANCE: 'true',
-      TRUSTED_PROXY_PROVIDER: 'render',
       RATE_LIMIT_BACKEND: 'memory',
       AUTH_SECURE_COOKIES: true,
     });
@@ -112,9 +110,23 @@ describe('parseServerEnvironment', () => {
         NODE_ENV: 'production',
         RENDER: 'true',
       }),
-    ).toThrow(
-      'DEPLOYMENT_ENV=staging, RENDER_STAGING_SINGLE_INSTANCE=true, TRUST_PROXY_HEADERS=true, TRUSTED_PROXY_PROVIDER=render',
-    );
+    ).toThrow('DEPLOYMENT_ENV=staging, RENDER_STAGING_SINGLE_INSTANCE=true');
+  });
+
+  it('rejects a Render profile that trusts forwarded client headers', () => {
+    expect(() =>
+      parseServerEnvironment({
+        ...validEnvironment,
+        NEXTAUTH_URL: 'https://247-home-staging.onrender.com',
+        NODE_ENV: 'production',
+        RENDER: 'true',
+        DEPLOYMENT_ENV: 'staging',
+        RENDER_STAGING_SINGLE_INSTANCE: 'true',
+        TRUST_PROXY_HEADERS: 'true',
+        TRUSTED_PROXY_PROVIDER: 'render',
+        RATE_LIMIT_BACKEND: 'memory',
+      }),
+    ).toThrow('TRUST_PROXY_HEADERS=false, TRUSTED_PROXY_PROVIDER=unset');
   });
 
   it('allows build-time page analysis without weakening runtime checks', () => {

@@ -1,5 +1,12 @@
 # Current System Audit Report
 
+> Historical snapshot: this report records the audit position at the time it
+> was written. Current remediation progress and local verification evidence are
+> tracked in `CURRENT_SYSTEM_REMEDIATION_PLAN.md`, `PHASE_1_EXECUTION_REPORT.md`
+> through `PHASE_7_EXECUTION_REPORT.md`, and `RELEASE_READINESS_RECORD.md`.
+> AWS/cloud evidence is deferred unless a report explicitly links independently
+> reviewable provider evidence; it must not be inferred from repository tests.
+
 **Project:** 247 Home
 **Audit date:** 2026-07-28
 **Audited revision:** `3346797` on `feature/auto-update`

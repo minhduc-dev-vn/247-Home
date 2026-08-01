@@ -33,9 +33,11 @@ may add its own stricter quota, but must not weaken application controls.
 ## 3. Proxy and client identity
 
 `TRUST_PROXY_HEADERS=false` is the safe default. Set it to `true` only when the
-trusted ingress strips client-provided forwarding headers and writes canonical
-`X-Forwarded-For`/`X-Real-IP`. Without that guarantee, the app deliberately uses
-a common untrusted bucket instead of trusting spoofable client identity.
+trusted CloudFront ingress overwrites `x-247-client-address` from
+`event.viewer.ip` and direct-origin traffic is blocked. `X-Forwarded-For` and
+`X-Real-IP` are never approved application inputs. Without the CloudFront
+contract, the app deliberately uses a common untrusted bucket instead of
+trusting spoofable client identity.
 
 ## 4. Limitations and monitoring
 

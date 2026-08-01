@@ -26,6 +26,7 @@ import {
   type VariantPatch,
 } from '@/modules/catalog/presentation/schemas';
 import { type IdentityActor } from '@/modules/identity';
+import { isCatalogImageStorageKey } from '@/modules/storage';
 import { prisma } from '@/shared/db/client';
 
 const publicProductSelect = {
@@ -37,7 +38,7 @@ const publicProductSelect = {
   images: {
     orderBy: { sortOrder: 'asc' },
     take: 1,
-    select: { id: true, altText: true },
+    select: { id: true, altText: true, storageKey: true },
   },
   variants: {
     where: { isActive: true },
@@ -68,6 +69,15 @@ function publicVariant(variant: {
   };
 }
 
+function publicCatalogImage(image: {
+  id: string;
+  altText: string;
+  storageKey: string;
+}) {
+  if (!isCatalogImageStorageKey(image.storageKey)) return null;
+  return { id: image.id, altText: image.altText };
+}
+
 function publicProduct(
   product: Prisma.ProductGetPayload<{ select: typeof publicProductSelect }>,
 ) {
@@ -87,9 +97,7 @@ function publicProduct(
     category: product.category,
     minPriceVnd: minPrice,
     availability,
-    image: product.images.at(0)
-      ? { id: product.images[0].id, altText: product.images[0].altText }
-      : null,
+    image: product.images.at(0) ? publicCatalogImage(product.images[0]) : null,
     variants,
   };
 }
@@ -155,7 +163,7 @@ export async function getPublicProduct(slug: string) {
       ...publicProductSelect,
       images: {
         orderBy: { sortOrder: 'asc' },
-        select: { id: true, altText: true },
+        select: { id: true, altText: true, storageKey: true },
       },
       variants: {
         where: { isActive: true },
@@ -180,10 +188,10 @@ export async function getPublicProduct(slug: string) {
   }
   return {
     ...publicProduct(product),
-    images: product.images.map((image) => ({
-      id: image.id,
-      altText: image.altText,
-    })),
+    images: product.images.flatMap((image) => {
+      const publicImage = publicCatalogImage(image);
+      return publicImage ? [publicImage] : [];
+    }),
     variants: product.variants.map((variant) => ({
       ...publicVariant(variant),
       servicePackages: variant.servicePackages.map((servicePackage) => ({
@@ -286,8 +294,9 @@ export async function addProductImage(
     mimeType: string;
     byteSize: number;
   },
+  requestId: string,
 ) {
-  requireCatalogAccess(actor);
+  const catalogActor = requireCatalogAccess(actor);
   return prisma.$transaction(async (transaction) => {
     const product = await transaction.product.findUnique({
       where: { id: productId },
@@ -299,17 +308,43 @@ export async function addProductImage(
       orderBy: { sortOrder: 'desc' },
       select: { sortOrder: true },
     });
-    return transaction.productImage.create({
+    const created = await transaction.productImage.create({
       data: { productId, ...image, sortOrder: (previous?.sortOrder ?? -1) + 1 },
     });
+    await transaction.auditLog.create({
+      data: {
+        actorUserId: catalogActor.userId,
+        action: 'catalog.product-image-created',
+        targetType: 'product_image',
+        targetId: created.id,
+        before: {},
+        after: {
+          byteSize: created.byteSize,
+          mimeType: created.mimeType,
+          productId: created.productId,
+          sortOrder: created.sortOrder,
+        },
+        requestId,
+      },
+    });
+    return {
+      id: created.id,
+      productId: created.productId,
+      altText: created.altText,
+      mimeType: created.mimeType,
+      byteSize: created.byteSize,
+      sortOrder: created.sortOrder,
+      createdAt: created.createdAt,
+    };
   });
 }
 
 export async function getPublicImage(imageId: string) {
-  return prisma.productImage.findFirst({
+  const image = await prisma.productImage.findFirst({
     where: { id: imageId, product: { status: ProductStatus.ACTIVE } },
     select: { storageKey: true, mimeType: true },
   });
+  return image && isCatalogImageStorageKey(image.storageKey) ? image : null;
 }
 
 export async function updateProduct(

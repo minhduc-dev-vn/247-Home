@@ -24,6 +24,16 @@ export async function cleanupCustomerOrdersFixtureNamespace(namespace: string) {
   const userPrefix = `orders-e2e-${namespace}-`;
 
   await prisma.$transaction(async (tx) => {
+    const fixtureOrders = await tx.order.findMany({
+      where: { orderNumber: { startsWith: orderPrefix } },
+      select: { id: true },
+    });
+    await tx.auditLog.deleteMany({
+      where: {
+        targetType: 'order',
+        targetId: { in: fixtureOrders.map(({ id }) => id) },
+      },
+    });
     await tx.installationEvidence.deleteMany({
       where: {
         assignment: {
@@ -215,13 +225,101 @@ export async function createCustomerOrdersFixture() {
       select: { id: true, orderNumber: true },
     });
 
+    const cancellableStartAt = new Date(Date.now() + 96 * 60 * 60 * 1_000);
+    const cancellableEndAt = new Date(
+      cancellableStartAt.getTime() + 2 * 60 * 60 * 1_000,
+    );
+    const cancellableSlot = await prisma.installationSlot.create({
+      data: {
+        bookedCount: 1,
+        capacity: 1,
+        endsAt: cancellableEndAt,
+        serviceAreaId: serviceArea.id,
+        startsAt: cancellableStartAt,
+      },
+      select: { id: true },
+    });
+    const cancellable = await prisma.order.create({
+      data: {
+        addressLine1: '247 ÄÆ°á»ng há»§y Ä‘Æ¡n kiá»ƒm thá»­',
+        countryCode: 'VN',
+        currency: 'VND',
+        districtCode: `D-${namespace}`,
+        districtName: 'Quáº­n kiá»ƒm thá»­',
+        grandTotal: 5_340_000n,
+        idempotencyHash: `orders-e2e-${namespace}-cancellable`,
+        installationFee: 300_000n,
+        inventoryStatus: InventoryDisposition.RESERVED,
+        orderNumber: orderNumber(namespace, 'CANCELLABLE'),
+        provinceCode: `P-${namespace}`,
+        provinceName: 'ThÃ nh phá»‘ kiá»ƒm thá»­',
+        recipientName: 'Customer Orders Owner',
+        recipientPhone: '0900000000',
+        requestFingerprint: `orders-e2e-${namespace}-cancellable`,
+        serviceAreaId: serviceArea.id,
+        shippingFee: 50_000n,
+        status: OrderStatus.PENDING_CONFIRMATION,
+        subtotal: 4_990_000n,
+        userId: owner.id,
+        wardName: 'PhÆ°á»ng kiá»ƒm thá»­',
+        appointment: {
+          create: {
+            scheduledEndAt: cancellableEndAt,
+            scheduledStartAt: cancellableStartAt,
+            serviceAreaId: serviceArea.id,
+            slotId: cancellableSlot.id,
+            status: AppointmentStatus.ASSIGNMENT_PENDING,
+          },
+        },
+        items: {
+          create: {
+            deviceUnitPrice: 4_990_000n,
+            lineTotal: 4_990_000n,
+            productName: 'KhÃ³a cá»­a thÃ´ng minh 247 Secure',
+            productVariantId: variantId,
+            quantity: 1,
+            serviceUnitPrice: 0n,
+            sku: `ORD-${namespace}`,
+            unitPrice: 4_990_000n,
+            variantName: 'MÃ u Ä‘en tiÃªu chuáº©n',
+          },
+        },
+        payment: {
+          create: {
+            amount: 5_340_000n,
+            method: PaymentMethod.COD,
+            referenceCode: `PAY-${namespace}-CANCELLABLE`,
+            status: PaymentStatus.PENDING,
+          },
+        },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        items: { select: { id: true, productVariantId: true, quantity: true } },
+      },
+    });
+    await prisma.$transaction(async (tx) => {
+      await tx.inventory.update({
+        where: { productVariantId: variantId },
+        data: { reserved: { increment: 1 }, version: { increment: 1 } },
+      });
+      await tx.inventoryAllocation.create({
+        data: {
+          orderItemId: cancellable.items[0].id,
+          productVariantId: cancellable.items[0].productVariantId,
+          quantity: cancellable.items[0].quantity,
+          status: InventoryDisposition.RESERVED,
+        },
+      });
+    });
+
     const secondaryStatuses = [
       OrderStatus.PROCESSING,
       OrderStatus.CONFIRMED,
       OrderStatus.PENDING_CONFIRMATION,
       OrderStatus.COMPLETED,
       OrderStatus.CANCELLED,
-      OrderStatus.CONFIRMED,
     ] as const;
     const secondaryOrders: Array<{ id: string; orderNumber: string }> = [];
     for (const [index, status] of secondaryStatuses.entries()) {
@@ -340,7 +438,7 @@ export async function createCustomerOrdersFixture() {
       cleanup: () => cleanupCustomerOrdersFixtureNamespace(namespace),
       namespace,
       variantId,
-      orders: { foreign, secondary: secondaryOrders, tracked },
+      orders: { cancellable, foreign, secondary: secondaryOrders, tracked },
       owner: { email: ownerEmail, id: owner.id },
       intruder: { email: intruderEmail, id: intruder.id },
       productName: 'Khóa cửa thông minh 247 Secure',

@@ -8,6 +8,12 @@ import {
   createErrorResponse,
   createSuccessResponse,
 } from '@/shared/http/response';
+import { logApplicationError } from '@/shared/observability/logger';
+
+function safeErrorCode(error: unknown): string {
+  if (error instanceof Error) return error.name || 'UNEXPECTED_ERROR';
+  return 'UNKNOWN_ERROR';
+}
 
 export async function POST(request: Request) {
   return withJsonMutation(
@@ -29,6 +35,12 @@ export async function POST(request: Request) {
             requestId,
             422,
           );
+        logApplicationError({
+          requestId,
+          route: '/api/v1/auth/reset-password',
+          category: 'password-reset-completion',
+          errorCode: safeErrorCode(error),
+        });
         return createErrorResponse(
           'INTERNAL_ERROR',
           'Khong the dat lai mat khau.',
