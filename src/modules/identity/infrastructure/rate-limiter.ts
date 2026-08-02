@@ -80,7 +80,8 @@ function isRenderSingleInstanceStaging(): boolean {
     process.env.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
     process.env.RATE_LIMIT_BACKEND === 'memory' &&
     process.env.TRUST_PROXY_HEADERS === 'false' &&
-    process.env.TRUSTED_PROXY_PROVIDER === undefined
+    (process.env.TRUSTED_PROXY_PROVIDER === undefined ||
+      process.env.TRUSTED_PROXY_PROVIDER === '')
   );
 }
 

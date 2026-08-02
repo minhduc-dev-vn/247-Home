@@ -74,6 +74,35 @@ describe('identity rate limiter', () => {
     });
   });
 
+  it('treats an exact empty Render proxy provider as unset', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RENDER', 'true');
+    vi.stubEnv('DEPLOYMENT_ENV', 'staging');
+    vi.stubEnv('RENDER_STAGING_SINGLE_INSTANCE', 'true');
+    vi.stubEnv('RATE_LIMIT_BACKEND', 'memory');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'false');
+    vi.stubEnv('TRUSTED_PROXY_PROVIDER', '');
+
+    expect(consumeRateLimit('register', '203.0.113.100')).toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it('rejects a non-empty Render proxy provider for the memory limiter', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RENDER', 'true');
+    vi.stubEnv('DEPLOYMENT_ENV', 'staging');
+    vi.stubEnv('RENDER_STAGING_SINGLE_INSTANCE', 'true');
+    vi.stubEnv('RATE_LIMIT_BACKEND', 'memory');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'false');
+    vi.stubEnv('TRUSTED_PROXY_PROVIDER', ' ');
+
+    expect(() => consumeRateLimit('register', '203.0.113.101')).toThrow(
+      'RATE_LIMIT_BACKEND=waf',
+    );
+  });
+
   it('fails closed when production has no shared limiter', () => {
     vi.stubEnv('NODE_ENV', 'production');
     delete process.env.RATE_LIMIT_BACKEND;
