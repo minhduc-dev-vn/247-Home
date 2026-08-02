@@ -1,3 +1,5 @@
+import { hasRenderSingleInstanceStagingContract } from '@/shared/validation/env';
+
 export type RateLimitAction = string;
 
 export type RateLimitPolicy = {
@@ -72,19 +74,6 @@ function hasCloudFrontWafContract(): boolean {
   );
 }
 
-function isRenderSingleInstanceStaging(): boolean {
-  return (
-    process.env.NODE_ENV === 'production' &&
-    process.env.RENDER === 'true' &&
-    process.env.DEPLOYMENT_ENV === 'staging' &&
-    process.env.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
-    process.env.RATE_LIMIT_BACKEND === 'memory' &&
-    process.env.TRUST_PROXY_HEADERS === 'false' &&
-    (process.env.TRUSTED_PROXY_PROVIDER === undefined ||
-      process.env.TRUSTED_PROXY_PROVIDER === '')
-  );
-}
-
 function environmentRateLimiter(): RateLimiter {
   if (process.env.RATE_LIMIT_BACKEND === 'waf') {
     if (!hasCloudFrontWafContract())
@@ -96,7 +85,7 @@ function environmentRateLimiter(): RateLimiter {
   if (
     process.env.NODE_ENV === 'production' &&
     process.env.LOCAL_DEMO !== 'true' &&
-    !isRenderSingleInstanceStaging()
+    !hasRenderSingleInstanceStagingContract(process.env)
   )
     throw new Error(
       'Production requires RATE_LIMIT_BACKEND=waf at the trusted edge.',

@@ -110,7 +110,29 @@ describe('parseServerEnvironment', () => {
         NODE_ENV: 'production',
         RENDER: 'true',
       }),
-    ).toThrow('DEPLOYMENT_ENV=staging, RENDER_STAGING_SINGLE_INSTANCE=true');
+    ).toThrow(
+      'DEPLOYMENT_ENV=staging, RENDER_STAGING_SINGLE_INSTANCE=true, RATE_LIMIT_BACKEND=memory',
+    );
+  });
+
+  it('requires explicit Render limiter settings instead of schema defaults', () => {
+    const staging = {
+      ...validEnvironment,
+      NEXTAUTH_URL: 'https://247-home-staging.onrender.com',
+      NODE_ENV: 'production',
+      RENDER: 'true',
+      DEPLOYMENT_ENV: 'staging',
+      RENDER_STAGING_SINGLE_INSTANCE: 'true',
+      TRUST_PROXY_HEADERS: 'false',
+      RATE_LIMIT_BACKEND: 'memory',
+    };
+
+    expect(() =>
+      parseServerEnvironment({ ...staging, RATE_LIMIT_BACKEND: undefined }),
+    ).toThrow('RATE_LIMIT_BACKEND=memory');
+    expect(() =>
+      parseServerEnvironment({ ...staging, TRUST_PROXY_HEADERS: undefined }),
+    ).toThrow('TRUST_PROXY_HEADERS=false');
   });
 
   it('rejects a Render profile that trusts forwarded client headers', () => {

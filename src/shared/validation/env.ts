@@ -27,6 +27,19 @@ function emptyValueAsUnset(value: string | undefined): string | undefined {
   return value === '' ? undefined : value;
 }
 
+export function hasRenderSingleInstanceStagingContract(
+  environment: Record<string, string | undefined>,
+): boolean {
+  return (
+    environment.RENDER === 'true' &&
+    environment.DEPLOYMENT_ENV === 'staging' &&
+    environment.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
+    environment.RATE_LIMIT_BACKEND === 'memory' &&
+    environment.TRUST_PROXY_HEADERS === 'false' &&
+    emptyValueAsUnset(environment.TRUSTED_PROXY_PROVIDER) === undefined
+  );
+}
+
 function getRenderStagingContractIssues(
   environment: Record<string, string | undefined>,
   parsed: z.infer<typeof serverEnvironmentSchema>,
@@ -42,14 +55,14 @@ function getRenderStagingContractIssues(
 
   if (environment.RENDER !== 'true')
     issues.push('RENDER=true (set automatically)');
-  requireValue('DEPLOYMENT_ENV', parsed.DEPLOYMENT_ENV, 'staging');
+  requireValue('DEPLOYMENT_ENV', environment.DEPLOYMENT_ENV, 'staging');
   requireValue(
     'RENDER_STAGING_SINGLE_INSTANCE',
-    parsed.RENDER_STAGING_SINGLE_INSTANCE,
+    environment.RENDER_STAGING_SINGLE_INSTANCE,
     'true',
   );
-  requireValue('RATE_LIMIT_BACKEND', parsed.RATE_LIMIT_BACKEND, 'memory');
-  requireValue('TRUST_PROXY_HEADERS', parsed.TRUST_PROXY_HEADERS, 'false');
+  requireValue('RATE_LIMIT_BACKEND', environment.RATE_LIMIT_BACKEND, 'memory');
+  requireValue('TRUST_PROXY_HEADERS', environment.TRUST_PROXY_HEADERS, 'false');
   if (parsed.TRUSTED_PROXY_PROVIDER !== undefined)
     issues.push('TRUSTED_PROXY_PROVIDER=unset');
 
@@ -92,12 +105,7 @@ export function parseServerEnvironment(
     parsed.TRUST_PROXY_HEADERS === 'true' &&
     parsed.TRUSTED_PROXY_PROVIDER === 'cloudfront';
   const renderSingleInstanceStagingContract =
-    environment.RENDER === 'true' &&
-    parsed.DEPLOYMENT_ENV === 'staging' &&
-    parsed.RENDER_STAGING_SINGLE_INSTANCE === 'true' &&
-    parsed.RATE_LIMIT_BACKEND === 'memory' &&
-    parsed.TRUST_PROXY_HEADERS === 'false' &&
-    parsed.TRUSTED_PROXY_PROVIDER === undefined;
+    hasRenderSingleInstanceStagingContract(environment);
   if (
     environment.NODE_ENV === 'production' &&
     environment.NEXT_PHASE !== 'phase-production-build' &&

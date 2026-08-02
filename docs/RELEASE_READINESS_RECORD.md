@@ -19,7 +19,7 @@ The latest full application verification on `feature/auto-update` passed:
 | --- | --- |
 | Prisma generate and migrate | PASS; 17 migrations, none pending |
 | Formatting, lint and TypeScript | PASS |
-| Unit tests | PASS; 207 tests |
+| Unit tests | PASS; 208 tests |
 | PostgreSQL integration tests | PASS; 111 tests |
 | Migration upgrade tests | PASS |
 | Playwright E2E | PASS; 51 tests on a fresh source server |
