@@ -200,21 +200,11 @@ installation-slot CRUD là Deferred và không chặn staging release này.
 
 ## 5. Definition of Done cho giai đoạn phân tích và thiết kế hiện tại
 
-- [ ] Có đủ 12 file được yêu cầu:
-  - `docs/PRODUCT_REQUIREMENTS.md`
-  - `docs/USER_FLOWS.md`
-  - `docs/ARCHITECTURE.md`
-  - `docs/DATABASE_DESIGN.md`
-  - `docs/API_CONTRACT.md`
-  - `docs/ORDER_STATE_MACHINE.md`
-  - `docs/INSTALLATION_STATE_MACHINE.md`
-  - `docs/THREAT_MODEL.md`
-  - `docs/IMPLEMENTATION_PLAN.md`
-  - `docs/DEFINITION_OF_DONE.md`
-  - `AGENTS.md`
-  - `README.md`
+- [ ] Các tài liệu canonical được liệt kê trong `docs/README.md` tồn tại và
+      không có liên kết nội bộ bị hỏng.
 - [ ] Database design mô tả toàn bộ bảng tối thiểu được yêu cầu.
-- [ ] Implementation plan chia vertical slices; mỗi slice có scope, files/modules, DB change, security, acceptance, tests và rollback.
+- [ ] Mỗi vertical slice có scope, files/modules, DB change, security,
+      acceptance, tests và rollback rõ ràng trong task hoặc tài liệu canonical.
 - [ ] Role, state, API, bảng và money model không mâu thuẫn.
 - [ ] MVP được chia thành phase nhỏ có dependency.
 - [ ] Điểm mở cần con người duyệt được liệt kê.

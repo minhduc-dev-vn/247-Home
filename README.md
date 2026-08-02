@@ -1,12 +1,12 @@
 # 247 Home
 
 > Quality update (2026-08-01): current repository-local release evidence is
-> recorded in [`docs/RELEASE_READINESS_RECORD.md`](docs/RELEASE_READINESS_RECORD.md)
-> and [`docs/PHASE_7_EXECUTION_REPORT.md`](docs/PHASE_7_EXECUTION_REPORT.md).
+> recorded in [`docs/RELEASE_READINESS_RECORD.md`](docs/RELEASE_READINESS_RECORD.md).
 > AWS/CloudFront/WAF qualification is deferred. Render remains a
 > single-instance demo/staging profile, not a production release target. VNPay
 > is not approved for public use until sandbox qualification, reconciliation
-> alert verification, and Finance/Security approval are complete.
+> alert verification, and Finance/Security approval are complete. Vercel is not
+> a supported deployment target for this repository.
 
 Ứng dụng thương mại điện tử bán thiết bị nhà thông minh và an ninh gia đình kèm dịch vụ lắp đặt tận nơi.
 
@@ -131,7 +131,6 @@ Role không thay ownership/assignment check. UI guard không thay server authori
 | [`docs/ORDER_STATE_MACHINE.md`](docs/ORDER_STATE_MACHINE.md)                                                   | Trạng thái/action/guard order                            |
 | [`docs/INSTALLATION_STATE_MACHINE.md`](docs/INSTALLATION_STATE_MACHINE.md)                                     | Trạng thái/action/guard appointment                      |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)                                                                 | STRIDE, abuse cases và security controls                 |
-| [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)                                                   | Phase và vertical slices                                 |
 | [`docs/DEFINITION_OF_DONE.md`](docs/DEFINITION_OF_DONE.md)                                                     | Quality/security/test gates                              |
 | [`docs/decisions/ADR-001-identity-local-credentials.md`](docs/decisions/ADR-001-identity-local-credentials.md) | Quyết định Auth.js local/test, session và rollback       |
 | [`AGENTS.md`](AGENTS.md)                                                                                       | Quy tắc bắt buộc khi thay đổi repository                 |
@@ -231,7 +230,7 @@ MVP chia thành phase:
 11. Warranty.
 12. Audit, security, performance và internal release candidate.
 
-Mỗi vertical slice trong [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) có:
+Mỗi vertical slice phải xác định:
 
 - Phạm vi.
 - File/module dự kiến.
@@ -429,8 +428,8 @@ The migration is additive and does not alter Identity tables. Do not delete cata
 - Payment is manual COD/bank-transfer reconciliation only; there is no payment
   gateway, card storage, or refund action.
 - Docker demo evidence uses private MinIO through the same S3-compatible adapter.
-  Staging evidence uses the private object-storage runtime contract in
-  [`docs/STAGING_SECRET_MANAGEMENT.md`](docs/STAGING_SECRET_MANAGEMENT.md).
+  Hosted storage must follow
+  [`docs/OBJECT_STORAGE_RUNBOOK.md`](docs/OBJECT_STORAGE_RUNBOOK.md).
 - The local/test rate limiter is in-memory. Production must inject a shared
   `RateLimiter` adapter before horizontal scaling.
 - Admin role management and admin installation-slot CRUD are deferred khỏi
@@ -445,4 +444,4 @@ The migration is additive and does not alter Identity tables. Do not delete cata
   and audit browsing. It does not provide warranty mutations or slot CRUD.
 - Chưa có production deployment, production credential hay payment gateway.
 - Staging vận hành theo single-instance assumption và runbook tại
-  [`docs/STAGING_OPERATIONS_RUNBOOK.md`](docs/STAGING_OPERATIONS_RUNBOOK.md).
+  [`docs/RENDER_STAGING_RUNBOOK.md`](docs/RENDER_STAGING_RUNBOOK.md).

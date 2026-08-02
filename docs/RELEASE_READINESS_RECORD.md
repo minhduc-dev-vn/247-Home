@@ -1,111 +1,68 @@
 # Release Readiness Record
 
-- **Recorded:** 2026-08-01
-- **Scope:** Repository and local-runtime quality evidence only
+- **Status:** Local/demo ready; production release not approved
+- **Reviewed:** 2026-08-01
+- **Active deployment profile:** Single-instance Render staging
 
-## Decision
+## Current decision
 
-**LOCAL/REPOSITORY QUALITY READY FOR RELEASE REVIEW.**
+The repository is ready for local demonstration and internet staging review on
+Render. It is not approved for production traffic or public VNPay payments.
+Vercel is no longer a supported deployment target. AWS provisioning is deferred
+for budget reasons.
 
-This is not a production-release approval. AWS infrastructure execution is
-deferred by the service owner, Render remains a one-instance demo/staging
-profile, and VNPay must remain unavailable to public users until its sandbox
-and approval matrix is complete.
+## Verified repository baseline
 
-## Source Identity
+The latest full application verification on `feature/auto-update` passed:
 
-| Item | Value |
+| Gate | Result |
 | --- | --- |
-| Working branch | `feature/auto-update` |
-| Last committed base observed | `92423cf0593af171bce094ca43185cbe81ef50a7` |
-| Validation target | Current local working tree on 2026-08-01 |
-| Deployment artifact | Not created in this task |
-| Render/AWS deployment | Not performed in this task |
+| Prisma generate and migrate | PASS; 17 migrations, none pending |
+| Formatting, lint and TypeScript | PASS |
+| Unit tests | PASS; 204 tests |
+| PostgreSQL integration tests | PASS; 111 tests |
+| Migration upgrade tests | PASS |
+| Playwright E2E | PASS; 51 tests on a fresh source server |
+| Next.js production build | PASS |
+| Production dependency audit | PASS; no moderate-or-higher advisory |
+| Docker Compose build | PASS |
+| Docker readiness | PASS; `/api/ready` returned HTTP 200 |
+| GitHub Actions quality workflow | PASS |
 
-The working tree intentionally contained prior remediation changes and was not
-automatically committed or pushed by this Phase 7 task. Consequently the base
-SHA above is an orientation point, not a release artifact identity. Before any
-release review, a named release owner must review the full diff, create one
-immutable commit/tag, and rerun the canonical gates against that commit.
+CI remains authoritative for the exact commit proposed for merge. A historical
+local result must not be reused for a later revision.
 
-## Local Runtime Evidence
+## Supported environments
 
-| Resource | Result |
-| --- | --- |
-| Docker PostgreSQL | Healthy at `127.0.0.1:5433`; existing volume retained |
-| Local MinIO | Healthy; existing volume retained |
-| Docker application | Restored after E2E; `/api/ready` returned HTTP 200 |
-| Database migration | `prisma migrate deploy`: 17 migrations, no pending migrations |
-| Development seed | `prisma db seed`: completed successfully |
-
-No reset, drop, truncate, destructive migration, external database connection,
-or cloud deployment was run for this record.
-
-## Quality Evidence
-
-All commands below ran after the Phase 2-6 application and migration changes
-present in the current worktree.
-
-| Command | Result |
-| --- | --- |
-| `pnpm db:generate` | PASS; Prisma Client generated via `prisma.config.ts` |
-| `pnpm db:migrate` | PASS; 17 migrations, none pending |
-| `pnpm db:seed` | PASS; local development seed completed |
-| `pnpm format:check` | PASS |
-| `pnpm lint` | PASS |
-| `pnpm typecheck` | PASS |
-| `pnpm audit:prod` | PASS; 180 packages, no moderate-or-higher advisories |
-| `pnpm test` | PASS; 40 files, 203 tests |
-| `pnpm test:integration` | PASS; 14 files, 111 PostgreSQL-backed tests |
-| `pnpm test:migration` | PASS; valid-history and invalid-history/rollback rejection checks |
-| `pnpm test:e2e` | PASS; 51 Playwright tests on a fresh `pnpm dev` server |
-| `pnpm build` | PASS; Next.js optimized production build |
-| `git diff --check` | PASS; no whitespace errors |
-
-The E2E run temporarily stopped only Docker Compose service `app` to prevent a
-stale process from satisfying Playwright's health check. PostgreSQL and MinIO
-were not stopped. The application container was restarted afterwards and
-`/api/ready` was verified with HTTP 200.
-
-## Phase 7 Finding Status
-
-| Finding | Status | Evidence |
+| Environment | Status | Source of truth |
 | --- | --- | --- |
-| M-01 Fresh database/E2E gates | Repository verified | Current local migration, test, integration, migration-upgrade, E2E, build results above |
-| M-02 Formatting gate absent from CI | Fixed | `.github/workflows/ci.yml` and `staging-release.yml` run `pnpm format:check` |
-| M-03 Stale readiness documentation | Fixed for current record | This document plus canonical README, threat model, API and Render runbook updates; historical reports remain unchanged |
-| M-07 Prisma package configuration deprecation | Fixed | `prisma.config.ts`; `package.json#prisma` removed; generate/migrate/seed passed without the deprecated-config warning |
+| Local Docker | Supported | [`LOCAL_DEMO_RUNBOOK.md`](LOCAL_DEMO_RUNBOOK.md) |
+| Render staging | Supported with one instance | [`RENDER_STAGING_RUNBOOK.md`](RENDER_STAGING_RUNBOOK.md) |
+| Vercel | Not supported | No deployment configuration is maintained |
+| AWS | Deferred | Terraform remains reference code under `infrastructure/` |
+| Production | Not approved | External controls below remain open |
 
-## Deferred External Controls
+## External blockers
 
-The following are explicitly deferred, not passed:
+- Rotate and invalidate any external database credential previously disclosed
+  outside the approved secret store.
+- Record the exact Render deployment commit and verify HTTPS, `/api/health` and
+  `/api/ready` on the public staging URL.
+- Keep Render at one application instance while the process-local staging rate
+  limiter is in use.
+- Configure and verify the production password-reset mail provider and worker.
+- Complete object-storage lifecycle, retention and recovery validation against
+  the selected hosted provider.
+- Complete VNPay merchant onboarding, signed callback tests, reconciliation and
+  named Finance/Security approval before enabling public online payments.
 
-- AWS CloudFront/WAF shared rate-limit evidence, origin lock-down, multi-instance
-  probes, CloudWatch evidence, and disaster-recovery/backup drills.
-- Render deployed-SHA evidence, secret rotation, and public-domain/HTTPS
-  verification.
-- Real object-storage provider lifecycle, malware-scanning and retention proof.
-- VNPay merchant onboarding, sandbox transactions, signed callback evidence,
-  reconciliation review, and Finance/Security/Operations approval.
-- Rotation and invalidation proof for any previously exposed external database
-  credential.
+## Release procedure
 
-## Required Human Approval Before Release
-
-1. Review and commit the full working tree; tag the exact commit intended for
-   release.
-2. Re-run this quality suite from that immutable commit in CI.
-3. Complete the deferred provider controls or formally accept them in a release
-   exception with an owner and expiry date.
-4. Verify the selected staging deployment uses the approved SHA and `/api/ready`.
-5. Keep VNPay disabled for public payment until all named approvers sign the
-   sandbox/reconciliation evidence.
-
-## Rollback Boundary
-
-Phase 7 adds CI/configuration/documentation only; it creates no schema change.
-If the Prisma config migration must be reversed before a release, revert the
-reviewed commit and use the prior package configuration only as a temporary
-compatibility measure. Do not run `prisma migrate reset`, downgrade a deployed
-schema destructively, or delete Docker volumes. Use the forward-fix procedures
-in `DATABASE_RUNBOOK.md` for database incidents.
+1. Review and merge an immutable commit after all required CI checks pass.
+2. Apply migrations from a trusted operator environment using
+   [`DATABASE_RUNBOOK.md`](DATABASE_RUNBOOK.md).
+3. Deploy that exact commit through Render.
+4. Run health, registration, catalog, checkout, operations and authorization
+   smoke tests.
+5. Roll back application code to the last known-good commit when required; do
+   not reset or destructively downgrade the database.

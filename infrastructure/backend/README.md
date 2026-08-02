@@ -17,8 +17,8 @@ bootstrap does not create a local Terraform state file. The stack provides:
 
 The retained KMS key, state bucket, access-log bucket and lock table are not
 deleted as rollback. Use a reviewed forward-fix and recover a prior state object
-version when required. Commands and the missing real inputs are documented in
-`docs/TERRAFORM_BACKEND_SETUP.md`.
+version when required. Real account inputs must be approved and stored outside
+Git before this deferred workflow is activated.
 
 Copy the appropriate example outside Git, replace placeholders, then initialize:
 

@@ -1,11 +1,11 @@
 # 247 Home AWS infrastructure
 
-Status: **INFRASTRUCTURE CODE READY**. No AWS resource has been created.
+Status: **DEFERRED REFERENCE IMPLEMENTATION**. No AWS resource has been created.
 
-This directory implements the approved architecture in
-`docs/CLOUD_DEPLOYMENT_ARCHITECTURE.md` as reviewable Terraform. It deliberately
-does not contain credentials, secret values, state, plans, DNS changes, or an
-automatic `terraform apply` workflow.
+This directory retains the previously reviewed AWS Terraform design for a
+future funded deployment. The active low-cost staging path is Render. This
+directory deliberately contains no credentials, secret values, state, plans,
+DNS changes, or automatic `terraform apply` workflow.
 
 ## Structure
 
@@ -114,7 +114,8 @@ access key and does not inject either variable into ECS.
 CloudFront connects to the ALB through `alb_origin_domain_name`, a
 project-owned DNS name such as `origin-staging.<root-domain>`. The regional ALB
 certificate must cover that name; the `us-east-1` CloudFront certificate covers
-the customer-facing aliases. See `docs/DOMAIN_CERTIFICATE_PLAN.md`.
+the customer-facing aliases. These certificate requirements must be reviewed
+again before the deferred AWS design is activated.
 
 ## Environment differences
 
@@ -128,5 +129,5 @@ the customer-facing aliases. See `docs/DOMAIN_CERTIFICATE_PLAN.md`.
 | ECR retained release images | 30                               | 100                                            |
 | WAF                         | Managed/rate rules in count mode | Count mode until Security approves enforcement |
 
-See `docs/AWS_INFRASTRUCTURE_AS_CODE.md` for the architecture mapping and future
-deployment procedure.
+Do not execute this design until funding, account ownership, security review and
+a new deployment runbook are approved.

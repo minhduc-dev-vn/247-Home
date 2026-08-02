@@ -9,8 +9,11 @@ import { login, withOperationsE2eFixture } from './operations.helpers';
 const hashSecret = 'playwright-test-vnpay-secret-247-home';
 
 test('customer creates VNPay payment and sees verified webhook result', async ({
+  baseURL,
   browser,
 }) => {
+  if (baseURL === undefined) throw new Error('Playwright baseURL is required');
+
   await withOperationsE2eFixture(browser, async ({ fixture, newContext }) => {
     const appointment = await fixture.createAppointment({
       customer: fixture.users.customerA,
@@ -81,7 +84,7 @@ test('customer creates VNPay payment and sees verified webhook result', async ({
       vnp_TransactionStatus: '00',
       vnp_TxnRef: source.vnp_TxnRef,
     };
-    const webhook = new URL('/api/v1/payment/webhook', 'http://127.0.0.1:3000');
+    const webhook = new URL('/api/v1/payment/webhook', baseURL);
     for (const [key, value] of Object.entries({
       ...unsigned,
       vnp_SecureHash: signVnpayParameters(unsigned, hashSecret),
