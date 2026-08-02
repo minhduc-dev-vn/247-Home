@@ -23,6 +23,10 @@ function isLoopbackUrl(value: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
+function emptyValueAsUnset(value: string | undefined): string | undefined {
+  return value === '' ? undefined : value;
+}
+
 function getRenderStagingContractIssues(
   environment: Record<string, string | undefined>,
   parsed: z.infer<typeof serverEnvironmentSchema>,
@@ -61,7 +65,9 @@ export function parseServerEnvironment(
     NEXTAUTH_URL: environment.NEXTAUTH_URL,
     APP_ORIGIN: environment.APP_ORIGIN,
     TRUST_PROXY_HEADERS: environment.TRUST_PROXY_HEADERS,
-    TRUSTED_PROXY_PROVIDER: environment.TRUSTED_PROXY_PROVIDER,
+    TRUSTED_PROXY_PROVIDER: emptyValueAsUnset(
+      environment.TRUSTED_PROXY_PROVIDER,
+    ),
     RATE_LIMIT_BACKEND: environment.RATE_LIMIT_BACKEND,
     DEPLOYMENT_ENV: environment.DEPLOYMENT_ENV,
     RENDER_STAGING_SINGLE_INSTANCE: environment.RENDER_STAGING_SINGLE_INSTANCE,

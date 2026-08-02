@@ -100,6 +100,11 @@ so remove stale values such as `PORT=3000`,
 `TRUSTED_PROXY_PROVIDER=render`, `TRUSTED_PROXY_PROVIDER=cloudfront`, or
 `RATE_LIMIT_BACKEND=waf`.
 
+Removing `TRUSTED_PROXY_PROVIDER` is preferred. If an automation API can only
+set or merge variables, set its value to the exact empty string. The runtime
+normalizes only that exact value to unset; every non-empty provider remains
+rejected for the Render staging profile.
+
 If deployment fails with `Invalid Render staging contract`, the log now lists
 every missing or incorrect non-secret setting. Correct those exact values
 instead of disabling runtime validation.

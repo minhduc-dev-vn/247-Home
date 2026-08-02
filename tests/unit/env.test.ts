@@ -129,6 +129,37 @@ describe('parseServerEnvironment', () => {
     ).toThrow('TRUST_PROXY_HEADERS=false, TRUSTED_PROXY_PROVIDER=unset');
   });
 
+  it('treats an exact empty proxy provider as unset for Render API compatibility', () => {
+    const staging = parseServerEnvironment({
+      ...validEnvironment,
+      NEXTAUTH_URL: 'https://247-home-staging.onrender.com',
+      APP_ORIGIN: 'https://247-home-staging.onrender.com',
+      NODE_ENV: 'production',
+      RENDER: 'true',
+      DEPLOYMENT_ENV: 'staging',
+      RENDER_STAGING_SINGLE_INSTANCE: 'true',
+      TRUST_PROXY_HEADERS: 'false',
+      TRUSTED_PROXY_PROVIDER: '',
+      RATE_LIMIT_BACKEND: 'memory',
+    });
+
+    expect(staging.TRUSTED_PROXY_PROVIDER).toBeUndefined();
+    expect(staging.TRUST_PROXY_HEADERS).toBe('false');
+    expect(() =>
+      parseServerEnvironment({
+        ...validEnvironment,
+        NEXTAUTH_URL: 'https://247-home-staging.onrender.com',
+        NODE_ENV: 'production',
+        RENDER: 'true',
+        DEPLOYMENT_ENV: 'staging',
+        RENDER_STAGING_SINGLE_INSTANCE: 'true',
+        TRUST_PROXY_HEADERS: 'false',
+        TRUSTED_PROXY_PROVIDER: ' ',
+        RATE_LIMIT_BACKEND: 'memory',
+      }),
+    ).toThrow();
+  });
+
   it('allows build-time page analysis without weakening runtime checks', () => {
     expect(
       parseServerEnvironment({

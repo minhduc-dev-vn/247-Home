@@ -1,7 +1,7 @@
 # Release Readiness Record
 
 - **Status:** Local/demo ready; production release not approved
-- **Reviewed:** 2026-08-01
+- **Reviewed:** 2026-08-02
 - **Active deployment profile:** Single-instance Render staging
 
 ## Current decision
@@ -19,7 +19,7 @@ The latest full application verification on `feature/auto-update` passed:
 | --- | --- |
 | Prisma generate and migrate | PASS; 17 migrations, none pending |
 | Formatting, lint and TypeScript | PASS |
-| Unit tests | PASS; 204 tests |
+| Unit tests | PASS; 205 tests |
 | PostgreSQL integration tests | PASS; 111 tests |
 | Migration upgrade tests | PASS |
 | Playwright E2E | PASS; 51 tests on a fresh source server |
