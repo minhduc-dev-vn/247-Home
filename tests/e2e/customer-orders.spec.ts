@@ -55,7 +55,7 @@ test('customer order history loads own orders with shared navigation and paginat
       page.getByText(fixture.orders.tracked.orderNumber),
     ).toBeVisible();
 
-    await page.getByRole('link', { name: 'Xóa bộ lọc' }).click();
+    await page.getByRole('button', { name: 'Xóa bộ lọc' }).click();
     await expect(page).toHaveURL(/\/orders$/);
     await expect(page.getByLabel('Trạng thái')).toHaveValue('');
     await page.getByRole('link', { name: 'Sau' }).click();

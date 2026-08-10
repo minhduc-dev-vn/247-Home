@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   clearRateLimitsForTest,
@@ -8,7 +8,10 @@ import {
 } from '@/modules/identity/infrastructure/rate-limiter';
 
 describe('identity rate limiter', () => {
-  afterEach(() => clearRateLimitsForTest());
+  afterEach(() => {
+    clearRateLimitsForTest();
+    vi.unstubAllEnvs();
+  });
 
   it('blocks the sixth login attempt in the active window', () => {
     const now = 1_000;
@@ -40,5 +43,42 @@ describe('identity rate limiter', () => {
     expect(calls).toEqual([
       { action: 'sensitive-mutation', key: 'client', limit: 30 },
     ]);
+  });
+
+  it('delegates production enforcement to the shared WAF edge', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RATE_LIMIT_BACKEND', 'waf');
+    expect(consumeRateLimit('login', 'replica-a')).toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
+    expect(consumeRateLimit('login', 'replica-b')).toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it('permits the explicitly declared single-instance Render staging limiter', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RENDER', 'true');
+    vi.stubEnv('DEPLOYMENT_ENV', 'staging');
+    vi.stubEnv('RENDER_STAGING_SINGLE_INSTANCE', 'true');
+    vi.stubEnv('RATE_LIMIT_BACKEND', 'memory');
+    vi.stubEnv('TRUST_PROXY_HEADERS', 'true');
+    vi.stubEnv('TRUSTED_PROXY_PROVIDER', 'render');
+
+    expect(consumeRateLimit('register', '203.0.113.99')).toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it('fails closed when production has no shared limiter', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    delete process.env.RATE_LIMIT_BACKEND;
+    delete process.env.LOCAL_DEMO;
+    expect(() => consumeRateLimit('login', 'client')).toThrow(
+      'RATE_LIMIT_BACKEND=waf',
+    );
   });
 });

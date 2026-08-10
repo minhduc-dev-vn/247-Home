@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const customerPassword = 'LocalDemoOnly-247Home';
+import {
+  createCustomerOrdersFixture,
+  customerOrdersFixturePassword,
+} from '../fixtures/customer-orders';
+import { prisma } from '@/shared/db/client';
 
 async function expectCustomerShell(page: Page) {
   const logo = page.getByRole('link', { name: '247 Home - Trang chủ' });
@@ -17,10 +21,10 @@ async function expectCustomerShell(page: Page) {
   await expect(page.locator('footer')).toBeVisible();
 }
 
-async function signInAsCustomer(page: Page) {
+async function signInAsCustomer(page: Page, email: string) {
   await page.goto('/login');
-  await page.getByLabel('Email').fill('customer@example.com');
-  await page.getByLabel('Mật khẩu').fill(customerPassword);
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Mật khẩu').fill(customerOrdersFixturePassword);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await expect(page).toHaveURL(/\/account$/);
 }
@@ -55,27 +59,43 @@ test('customer route layout persists across public catalog navigation', async ({
 test('authenticated customer routes share one header, navbar, and footer', async ({
   page,
 }) => {
-  await signInAsCustomer(page);
+  const fixture = await createCustomerOrdersFixture();
+  try {
+    await prisma.cart.create({
+      data: {
+        userId: fixture.owner.id,
+        items: {
+          create: {
+            productVariantId: fixture.variantId,
+            quantity: 1,
+          },
+        },
+      },
+    });
+    await signInAsCustomer(page, fixture.owner.email);
 
-  for (const route of ['/account', '/cart', '/checkout', '/orders']) {
-    await page.goto(route);
-    await expect(page).toHaveURL(new RegExp(`${route}$`));
+    for (const route of ['/account', '/cart', '/checkout', '/orders']) {
+      await page.goto(route);
+      await expect(page).toHaveURL(new RegExp(`${route}$`));
+      await expectCustomerShell(page);
+    }
+
+    const orderLink = page.locator('main a[href^="/orders/"]').first();
+    await expect(orderLink).toBeVisible();
+    const orderHref = await orderLink.getAttribute('href');
+    expect(orderHref).toMatch(/^\/orders\//);
+
+    await orderLink.click();
+    await expect(page).toHaveURL(new RegExp(`${orderHref}$`));
     await expectCustomerShell(page);
+
+    const orderId = orderHref?.split('/').at(-1);
+    expect(orderId).toBeTruthy();
+    await page.goto(`/order-confirmation/${orderId}`);
+    await expectCustomerShell(page);
+  } finally {
+    await fixture.cleanup();
   }
-
-  const orderLink = page.locator('main a[href^="/orders/"]').first();
-  await expect(orderLink).toBeVisible();
-  const orderHref = await orderLink.getAttribute('href');
-  expect(orderHref).toMatch(/^\/orders\//);
-
-  await orderLink.click();
-  await expect(page).toHaveURL(new RegExp(`${orderHref}$`));
-  await expectCustomerShell(page);
-
-  const orderId = orderHref?.split('/').at(-1);
-  expect(orderId).toBeTruthy();
-  await page.goto(`/order-confirmation/${orderId}`);
-  await expectCustomerShell(page);
 });
 
 test('auth pages remain outside the customer route layout', async ({

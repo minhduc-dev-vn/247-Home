@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 import {
   IdentityError,
   registrationSchema,
@@ -8,6 +10,17 @@ import {
   createErrorResponse,
   createSuccessResponse,
 } from '@/shared/http/response';
+import { logApplicationError } from '@/shared/observability/logger';
+
+function safeErrorCode(error: unknown): string {
+  if (error instanceof IdentityError) return error.code;
+  if (error instanceof Prisma.PrismaClientKnownRequestError)
+    return `PRISMA_${error.code}`;
+  if (error instanceof Prisma.PrismaClientInitializationError)
+    return 'PRISMA_INITIALIZATION_ERROR';
+  if (error instanceof Error) return error.name || 'UNEXPECTED_ERROR';
+  return 'UNKNOWN_ERROR';
+}
 
 export async function POST(request: Request) {
   return withJsonMutation(
@@ -31,6 +44,12 @@ export async function POST(request: Request) {
             requestId,
             422,
           );
+        logApplicationError({
+          requestId,
+          route: '/api/v1/auth/register',
+          category: 'customer-registration',
+          errorCode: safeErrorCode(error),
+        });
         return createErrorResponse(
           'INTERNAL_ERROR',
           'Khong the tao tai khoan.',

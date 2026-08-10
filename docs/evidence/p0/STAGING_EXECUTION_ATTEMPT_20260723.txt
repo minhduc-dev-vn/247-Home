@@ -1,0 +1,90 @@
+247 Home P0 staging execution attempt
+=======================================
+
+Execution date: 2026-07-23
+Repository: minhduc-dev-vn/247-Home
+Branch: feature/auto-update
+Release tag: v0.1.0-staging-p0.1
+Release commit: c34063603191a17492dd0684b22a563c3d9759cb
+
+Published revisions
+-------------------
+
+- 9d3e387 Harden P0 release infrastructure and payment operations
+- c340636 Stabilize customer layout E2E fixture
+- Annotated staging tag v0.1.0-staging-p0.1 points to c340636.
+
+Repository CI
+-------------
+
+Run: https://github.com/minhduc-dev-vn/247-Home/actions/runs/30016769995
+Result: PASS
+
+Immutable staging release attempt
+---------------------------------
+
+Run: https://github.com/minhduc-dev-vn/247-Home/actions/runs/30017223927
+Result: FAIL-CLOSED before AWS authentication or mutation
+
+Quality job:
+https://github.com/minhduc-dev-vn/247-Home/actions/runs/30017223927/job/89240266367
+
+- immutable staging tag check: PASS
+- pnpm install --frozen-lockfile: PASS
+- production dependency audit: PASS, 180 packages, no moderate-or-higher advisory
+- prisma migrate deploy: PASS, all migrations applied
+- lint: PASS
+- typecheck: PASS
+- unit: PASS, 30 files / 107 tests
+- integration: PASS, 10 files / 68 tests
+- migration upgrade: PASS, valid history and invalid-history rollback cases
+- E2E: PASS, 47/47
+- build: PASS
+
+Artifact job:
+https://github.com/minhduc-dev-vn/247-Home/actions/runs/30017223927/job/89241608623
+
+The "Require reviewed AWS bindings" step failed because all three required
+GitHub environment variables were empty:
+
+- AWS_REGION
+- AWS_ROLE_ARN
+- ECR_REPOSITORY_URL
+
+AWS credential configuration, ECR login, image build/push, registry scans,
+SBOM/provenance publication and artifact identity recording were skipped.
+The deploy-staging job was skipped. No AWS API mutation was attempted.
+
+External binding audit
+----------------------
+
+- GitHub environment "staging": exists; created by the workflow run.
+- GitHub staging variables: none configured.
+- GitHub staging secrets: none configured.
+- Local AWS CLI: not installed.
+- Local AWS_* environment variables: none.
+- Local VNPAY_* environment variables: none.
+- Terraform staging examples still require reviewed account, backend,
+  certificate, DNS, service and image values.
+
+Evidence not produced
+---------------------
+
+Because no AWS or VNPay staging binding existed, this run did not produce:
+
+- ECR runtime or migration registry digest
+- ECS task/container ID or HTTPS smoke result
+- WAF sampled requests, CloudWatch metrics or multi-instance 429 result
+- Terraform plan/apply diff against an AWS account
+- RDS snapshot, isolated restore, RPO/RTO or rollback result
+- S3 lifecycle runtime validation
+- Secrets Manager injection proof
+- VNPay sandbox transaction, signed provider IPN or reconciliation result
+- AWS/VNPay screenshots
+
+Release decision
+----------------
+
+Repository remediation and current-revision quality gates are proven.
+Production release remains BLOCKED. P0-02 through P0-07 require real staging
+bindings, external execution evidence and named human approvals.

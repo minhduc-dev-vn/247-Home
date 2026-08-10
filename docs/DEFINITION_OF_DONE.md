@@ -6,6 +6,11 @@ Tài liệu quy định điều kiện bắt buộc để một task, vertical s
 
 Hiện tại dự án chỉ ở giai đoạn phân tích và thiết kế. Definition of Done cho giai đoạn hiện tại nằm tại mục 5.
 
+> Document update (2026-07-23): the earlier statement that the project is only
+> in analysis/design is historical. The repository contains implemented
+> vertical slices; release acceptance additionally requires the P0 evidence and
+> external approvals recorded in `P0_REMEDIATION_EVIDENCE.md`.
+
 ## 2. Definition of Done cho task implementation
 
 ### Phạm vi và thiết kế

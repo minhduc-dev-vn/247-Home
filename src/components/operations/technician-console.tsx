@@ -200,7 +200,7 @@ function ConfirmDialog({
       <section
         aria-labelledby={titleId}
         aria-modal="true"
-        className="w-full max-w-md rounded-lg border bg-[var(--surface)] p-5 shadow-[var(--shadow-modal)]"
+        className="motion-dialog w-full max-w-md rounded-lg border bg-[var(--surface)] p-5 shadow-[var(--shadow-modal)]"
         role="dialog"
       >
         <div className="flex items-start gap-3">
@@ -405,7 +405,7 @@ export function TechnicianOrdersList() {
           <div className="grid gap-3 p-3 sm:p-4 lg:grid-cols-2">
             {jobs.items.map((job) => (
               <article
-                className="flex min-w-0 flex-col rounded-lg border bg-[var(--surface)] p-4"
+                className="motion-feedback motion-card-interactive flex min-w-0 flex-col rounded-lg border bg-[var(--surface)] p-4"
                 data-testid="technician-job-card"
                 key={job.id}
               >
@@ -509,14 +509,14 @@ function JobTimeline({ detail }: { detail: JobDetail }) {
               <span
                 aria-hidden="true"
                 className={cn(
-                  'absolute top-6 left-[11px] h-[calc(100%-16px)] w-0.5',
+                  'motion-timeline-line absolute top-6 left-[11px] h-[calc(100%-16px)] w-0.5',
                   complete ? 'bg-[var(--success)]' : 'bg-[var(--border)]',
                 )}
               />
             ) : null}
             <span
               className={cn(
-                'relative z-10 mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border',
+                'motion-timeline-node relative z-10 mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border',
                 complete
                   ? 'border-[var(--success)] bg-[var(--success)] text-white'
                   : 'border-[var(--border)] bg-[var(--surface)] text-[var(--muted)]',
@@ -869,7 +869,7 @@ export function TechnicianOrderDetail({
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {detail.evidence.map((item) => (
                     <a
-                      className="group block overflow-hidden rounded-md border bg-[var(--surface)]"
+                      className="motion-card-interactive group block overflow-hidden rounded-md border bg-[var(--surface)]"
                       href={`/api/v1/operations/evidence/${item.id}`}
                       key={item.id}
                       rel="noreferrer"
@@ -901,7 +901,10 @@ export function TechnicianOrderDetail({
                 />
               )}
               {detail.status === 'ACTIVE' ? (
-                <div className="mt-4 rounded-lg border bg-[var(--surface-subtle)] p-3">
+                <div
+                  aria-busy={uploading || undefined}
+                  className="mt-4 rounded-lg border bg-[var(--surface-subtle)] p-3 transition-opacity duration-200 aria-busy:opacity-70"
+                >
                   <label className="block text-sm font-medium">
                     Anh nghiem thu
                     <Input
@@ -952,7 +955,7 @@ export function TechnicianOrderDetail({
 
       <section
         aria-label="Thao tác công việc"
-        className="fixed inset-x-0 bottom-14 z-30 border-t bg-[var(--surface)]/95 px-3 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur md:bottom-0 lg:static lg:mt-5 lg:rounded-lg lg:border lg:px-5 lg:shadow-none"
+        className="fixed inset-x-0 bottom-14 z-30 border-t bg-[var(--surface)]/95 px-3 py-3 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] backdrop-blur transition-transform duration-200 md:bottom-0 lg:static lg:mt-5 lg:rounded-lg lg:border lg:px-5 lg:shadow-none"
       >
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-2">
           <div className="mr-auto hidden sm:block">

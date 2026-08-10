@@ -30,6 +30,7 @@ const orderStatusLabels: Record<string, string> = {
 const paymentMethodLabels: Record<string, string> = {
   BANK_TRANSFER: 'Chuyển khoản thủ công',
   COD: 'Thanh toán COD',
+  VNPAY: 'Thanh toán trực tuyến VNPay',
 };
 
 export default async function ConfirmationPage({

@@ -6,7 +6,7 @@ Scope: single-instance staging only; never production
 ## 1. Preconditions
 
 - Deploy the reviewed Git commit from a clean branch after CI passes.
-- Use Node.js 24 and pnpm 10.32.1 with the committed lockfile.
+- Use Node.js 24 and pnpm 11.16.0 with the committed lockfile.
 - Provision a new PostgreSQL 16 database; never copy the reused local DB.
 - Store `DATABASE_URL` and a random `NEXTAUTH_SECRET` (minimum 32 characters) in
   the staging platform secret manager, not source or build logs.

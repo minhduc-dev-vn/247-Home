@@ -26,6 +26,15 @@ variable "auth_rate_limit" {
     error_message = "auth_rate_limit must be at least 10 requests per evaluation window."
   }
 }
+variable "mutation_rate_limit" {
+  type    = number
+  default = 600
+
+  validation {
+    condition     = var.mutation_rate_limit >= 10
+    error_message = "mutation_rate_limit must be at least 10 requests per evaluation window."
+  }
+}
 variable "log_retention_days" {
   type    = number
   default = 30

@@ -1,5 +1,10 @@
 # Rate Limiting Strategy
 
+> Superseded for staging/production on 2026-07-23 by
+> `decisions/ADR-002-production-rate-limiting.md` and
+> `RATE_LIMITING_RUNBOOK.md`. The single-instance staging acceptance below is
+> historical and is not approved for a public release.
+
 Decision date: 2026-07-15
 
 ## 1. Current implementation

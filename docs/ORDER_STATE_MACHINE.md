@@ -97,6 +97,19 @@ Baseline khuyến nghị:
 
 - Chỉ `confirm` order khi payment `PAID`.
 - STAFF/MANAGER có permission xác nhận thủ công qua payment action.
+
+### VNPAY
+
+- Checkout creates the payment from the database total in `PENDING`.
+- Creating an idempotent provider session moves it to `PROCESSING`.
+- Only a valid HMAC-SHA512 IPN may move it to `PAID` or `FAILED`.
+- A verified `PAID` IPN conditionally changes an order from
+  `PENDING_CONFIRMATION` to `CONFIRMED` in the same transaction.
+- Browser return data never changes state. Manual staff payment actions are not
+  available for VNPay.
+- Installation start/completion and completion without installation continue
+  to require `PAID`; therefore a pending or failed online payment cannot enter
+  installation execution.
 - Payment `FAILED` khi order còn `PENDING_CONFIRMATION` có thể cho khách thử đối soát lại hoặc hủy; không tạo gateway retry.
 - Payment amount luôn bằng `orders.grand_total`, không nhận từ client.
 

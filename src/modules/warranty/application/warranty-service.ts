@@ -15,6 +15,7 @@ import {
   evaluateWarrantyEligibility,
   hasDuplicateWarrantyCoverage,
 } from '@/modules/warranty/domain/warranty-policy';
+import { lockWarrantyCreateIdempotency } from '@/modules/warranty/infrastructure/warranty-repository';
 import {
   type WarrantyAuditListInput,
   type WarrantyCreateInput,
@@ -307,6 +308,11 @@ export async function createWarrantyRequest(
   let requestFingerprint: string | undefined;
   try {
     return await prisma.$transaction(async (tx) => {
+      await lockWarrantyCreateIdempotency(
+        tx,
+        customer.userId,
+        idempotencyHash,
+      );
       const orderItem = await resolveWarrantyOrderItem(
         tx,
         customer.userId,

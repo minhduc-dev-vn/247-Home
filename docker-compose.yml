@@ -118,6 +118,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+      - /app/.next/cache:uid=1001,gid=1001,mode=0755
     cap_drop:
       - ALL
     security_opt:

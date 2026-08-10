@@ -88,7 +88,9 @@ export function AddToCart({ variants }: { variants: Variant[] }) {
           Lựa chọn mua hàng
         </h2>
         {selected ? (
-          <p className="font-bold">{formatVnd(selected.priceVnd)}</p>
+          <p className="motion-price-change font-bold" key={selected.id}>
+            {formatVnd(selected.priceVnd)}
+          </p>
         ) : null}
       </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
@@ -161,7 +163,10 @@ export function AddToCart({ variants }: { variants: Variant[] }) {
           ))}
         </Select>
         {selectedPackage ? (
-          <p className="mt-2 text-sm text-[var(--muted)]">
+          <p
+            className="motion-price-change mt-2 text-sm text-[var(--muted)]"
+            key={selectedPackage.id}
+          >
             Phí gói đã chọn: {formatVnd(selectedPackage.priceVnd)}
           </p>
         ) : null}

@@ -36,7 +36,7 @@ export function CartItem({
   return (
     <article
       aria-busy={pending || undefined}
-      className="grid min-w-0 gap-4 border-b py-6 last:border-b-0 sm:grid-cols-[7rem_minmax(0,1fr)]"
+      className="grid min-w-0 gap-4 border-b py-6 transition-[opacity,transform] duration-200 last:border-b-0 aria-busy:translate-x-1 aria-busy:opacity-60 motion-reduce:transform-none sm:grid-cols-[7rem_minmax(0,1fr)]"
       data-testid="cart-item"
     >
       <div
@@ -100,8 +100,9 @@ export function CartItem({
               </button>
               <output
                 aria-label={`Số lượng ${item.name}`}
-                className="grid h-full min-w-10 place-items-center border-x px-3 text-sm font-semibold"
+                className="motion-quantity-change grid h-full min-w-10 place-items-center border-x px-3 text-sm font-semibold"
                 data-testid="cart-item-quantity"
+                key={item.quantity}
               >
                 {item.quantity}
               </output>

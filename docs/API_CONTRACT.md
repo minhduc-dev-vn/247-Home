@@ -166,6 +166,9 @@ Query: `serviceAreaId`, `fromDate`, `toDate` tối đa khoảng thời gian đư
 
 | Method | Path | Quyền |
 |---|---|---|
+| POST | `/api/v1/auth/register` | Public, rate limited |
+| POST | `/api/v1/auth/forgot-password` | Public, rate limited |
+| POST | `/api/v1/auth/reset-password` | Public, rate limited |
 | GET | `/api/v1/me` | Authenticated |
 | GET | `/api/v1/addresses` | CUSTOMER own |
 | POST | `/api/v1/addresses` | CUSTOMER own |
@@ -173,6 +176,11 @@ Query: `serviceAreaId`, `fromDate`, `toDate` tối đa khoảng thời gian đư
 | DELETE | `/api/v1/addresses/{id}` | CUSTOMER own, soft archive |
 
 Auth.js endpoints nằm dưới route chuẩn được cấu hình; không tái tạo login protocol tùy ý.
+
+Mật khẩu đăng ký, đăng nhập và đặt lại có độ dài từ 8 đến 128 ký tự.
+Registration tạo user và gắn role `CUSTOMER` trong cùng transaction. Role hệ
+thống được cài bởi migration; application chỉ tạo bù `CUSTOMER` khi reference
+data này thực sự thiếu.
 
 Address mutation:
 
@@ -505,6 +513,34 @@ Body chung:
 
 Không có `PATCH status`. Route không tự định nghĩa transition; action, actor, current state, next state, payment guard và inventory guard đều do policy server-side duy nhất quyết định. Mutation dùng conditional write theo `id + expectedVersion + expected current status`; count khác `1` trả `409 CONCURRENT_MODIFICATION`.
 
+## Online payment (VNPay)
+
+| Method | Route | Access |
+| --- | --- | --- |
+| POST | `/api/v1/payment/create` | CUSTOMER owner; JSON; `Idempotency-Key` required |
+| GET | `/api/v1/payment/{id}` | CUSTOMER owner; private/no-store |
+| GET/POST | `/api/v1/payment/webhook` | VNPay signed callback; no browser session required |
+| GET | `/api/v1/payment/return` | Signed browser return; read/redirect only |
+
+Create input is `{ "orderId": "cuid", "paymentMethod": "VNPAY" }`. The
+server reads amount and currency from the owned order/payment. Success returns
+`paymentUrl`, `id`, `sessionId`, `status`, `amount`, `currency`, and
+`expiresAt`. A reused key with the same fingerprint returns the original
+session and `Idempotent-Replayed: true`; a different fingerprint returns
+`409 IDEMPOTENCY_CONFLICT`.
+
+The webhook verifies HMAC-SHA512, merchant, provider reference, amount,
+response code, and transaction status before mutation. A valid success changes
+payment to `PAID` and conditionally confirms a pending order in one transaction.
+A duplicate signed event is acknowledged without another version increment or
+audit event. Invalid signature is `403`; malformed payload is `400`; amount
+mismatch uses VNPay `RspCode=04`. Authenticated responses are
+`Cache-Control: private, no-store`.
+
+`POST /api/v1/payment/{id}/refund` is reserved. It is not active until refund
+authorization, partial-refund, accounting, and provider reconciliation rules
+are approved. Clients must not set `REFUNDED` directly.
+
 `mark-ready-for-installation` chuyển reservation `RESERVED -> CONSUMED`, giảm `inventory.onHand` và `inventory.reserved`, cập nhật order/version và ghi audit trong cùng transaction. Request retry bằng version cũ trả `409` và không consume/audit lần hai. `complete-without-installation` yêu cầu payment `PAID`, inventory `CONSUMED` và không có appointment.
 
 Response thành công chỉ trả DTO JSON-safe gồm `id`, `status`, `inventoryStatus`, `version` và các timestamp transition liên quan; không trả trực tiếp Prisma money `BigInt` hoặc payload order đầy đủ.
@@ -644,7 +680,7 @@ Không cho xóa ADMIN cuối cùng. Mutation tăng `authVersion`, có audit; ses
 
 | Method | Path | Auth | Nội dung |
 |---|---|---|---|
-| GET | `/api/health` | Local/test policy | Process alive |
+| GET | `/api/health` | Local/test policy | Process alive và deployment revision không nhạy cảm |
 | GET | `/api/ready` | Local/test policy | DB reachable với timeout |
 
 Không trả config, dependency version, hostname nhạy cảm hoặc credential.
@@ -689,7 +725,7 @@ Không dùng message để client quyết định logic; dùng `code`.
 
 - Response auth-sensitive: `Cache-Control: private, no-store`.
 - Catalog public có thể cache server-side; không cache availability làm cam kết.
-- Operations mutation kiểm `Origin` theo `NEXTAUTH_URL`/`APP_ORIGIN`; development/test chỉ allow `http://localhost:3000` và `http://127.0.0.1:3000`.
+- Mutation kiểm `Origin` theo `NEXTAUTH_URL`/`APP_ORIGIN`; trên Render, URL do nền tảng cung cấp qua `RENDER_EXTERNAL_URL` cũng được phép khi `RENDER=true`. Development/test chỉ allow `http://localhost:3000` và `http://127.0.0.1:3000`.
 - Operations mutation chỉ nhận `application/json`. Body JSON action mặc định tối đa 64 KiB; endpoint evidence dùng JSON base64 tối đa 8 MiB, trong đó decoded image tối đa 5 MiB.
 - Storage validation failure trả `400 VALIDATION_ERROR`; provider/config outage
   trả `503 STORAGE_UNAVAILABLE` với message generic, không lộ endpoint hay

@@ -109,60 +109,60 @@ export default async function OrdersPage({
         <Container className="max-w-6xl">
           <div className="grid gap-6 lg:grid-cols-[14rem_minmax(0,1fr)]">
             <aside className="self-start lg:sticky lg:top-24">
-              <form
-                action="/orders"
-                className="rounded-lg border bg-[var(--surface)] p-4"
-                method="get"
-              >
-                <div className="flex items-center gap-2">
-                  <SlidersHorizontal
-                    aria-hidden="true"
-                    className="size-4 text-[var(--primary)]"
-                  />
-                  <h2 className="font-semibold">Lọc đơn hàng</h2>
-                </div>
-                <label
-                  className="mt-4 block text-sm font-medium"
-                  htmlFor="order-status"
-                >
-                  Trạng thái
-                </label>
-                <Select
-                  className="mt-2"
-                  defaultValue={status ?? ''}
-                  id="order-status"
-                  key={status ?? 'all-statuses'}
-                  name="status"
-                >
-                  <option value="">Tất cả trạng thái</option>
-                  {Object.values(OrderStatus).map((value) => (
-                    <option key={value} value={value}>
-                      {orderStatusPresentation[value].label}
-                    </option>
-                  ))}
-                </Select>
-                <button
-                  className={buttonVariants({
-                    className: 'mt-3 w-full',
-                    intent: 'primary',
-                    size: 'sm',
-                  })}
-                  type="submit"
-                >
-                  Áp dụng
-                </button>
-                {status ? (
-                  <Link
-                    className="mt-3 block text-center text-sm font-semibold text-[var(--primary)] hover:underline"
-                    href="/orders"
+              <div className="rounded-lg border bg-[var(--surface)] p-4">
+                <form action="/orders" method="get">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal
+                      aria-hidden="true"
+                      className="size-4 text-[var(--primary)]"
+                    />
+                    <h2 className="font-semibold">Lọc đơn hàng</h2>
+                  </div>
+                  <label
+                    className="mt-4 block text-sm font-medium"
+                    htmlFor="order-status"
                   >
-                    Xóa bộ lọc
-                  </Link>
+                    Trạng thái
+                  </label>
+                  <Select
+                    className="mt-2"
+                    defaultValue={status ?? ''}
+                    id="order-status"
+                    key={status ?? 'all-statuses'}
+                    name="status"
+                  >
+                    <option value="">Tất cả trạng thái</option>
+                    {Object.values(OrderStatus).map((value) => (
+                      <option key={value} value={value}>
+                        {orderStatusPresentation[value].label}
+                      </option>
+                    ))}
+                  </Select>
+                  <button
+                    className={buttonVariants({
+                      className: 'mt-3 w-full',
+                      intent: 'primary',
+                      size: 'sm',
+                    })}
+                    type="submit"
+                  >
+                    Áp dụng
+                  </button>
+                </form>
+                {status ? (
+                  <form action="/orders" method="get">
+                    <button
+                      className="mt-3 w-full text-center text-sm font-semibold text-[var(--primary)] hover:underline"
+                      type="submit"
+                    >
+                      Xóa bộ lọc
+                    </button>
+                  </form>
                 ) : null}
                 <p className="mt-4 border-t pt-3 text-xs leading-5 text-[var(--muted)]">
                   Bộ lọc áp dụng cho các đơn trên trang hiện tại.
                 </p>
-              </form>
+              </div>
             </aside>
 
             <div className="min-w-0">

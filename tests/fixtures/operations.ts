@@ -294,6 +294,20 @@ export async function cleanupOperationsFixtureNamespace(
           .then(() => undefined),
     },
     {
+      name: 'delete fixture payment webhook rows',
+      run: () =>
+        client.paymentWebhookEvent
+          .deleteMany({ where: { payment: { orderId: { in: orderIds } } } })
+          .then(() => undefined),
+    },
+    {
+      name: 'delete fixture payment sessions',
+      run: () =>
+        client.paymentSession
+          .deleteMany({ where: { payment: { orderId: { in: orderIds } } } })
+          .then(() => undefined),
+    },
+    {
       name: 'delete fixture payments',
       run: () =>
         client.payment

@@ -4,6 +4,10 @@ import {
   createErrorResponse,
   createSuccessResponse,
 } from '@/shared/http/response';
+import {
+  describeError,
+  logApplicationError,
+} from '@/shared/observability/logger';
 
 export async function POST(request: Request) {
   return withJsonMutation(
@@ -13,7 +17,13 @@ export async function POST(request: Request) {
     async (requestId, input) => {
       try {
         await requestPasswordReset(input.email);
-      } catch {
+      } catch (error: unknown) {
+        logApplicationError({
+          requestId,
+          route: '/api/v1/auth/forgot-password',
+          category: 'password-reset-request',
+          ...describeError(error),
+        });
         return createErrorResponse(
           'INTERNAL_ERROR',
           'Khong the xu ly yeu cau.',

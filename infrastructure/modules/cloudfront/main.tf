@@ -10,6 +10,19 @@ data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
 
+resource "aws_cloudfront_function" "viewer_context" {
+  name    = "${var.name}-viewer-context"
+  runtime = "cloudfront-js-2.0"
+  comment = "Overwrite the trusted client address before forwarding to the origin"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      event.request.headers['x-247-client-address'] = { value: event.viewer.ip };
+      return event.request;
+    }
+  EOT
+}
+
 resource "aws_cloudfront_distribution" "this" {
   enabled         = true
   is_ipv6_enabled = true
@@ -46,6 +59,11 @@ resource "aws_cloudfront_distribution" "this" {
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.viewer_context.arn
+    }
   }
 
   ordered_cache_behavior {

@@ -32,7 +32,7 @@ export function Alert({
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-md border px-4 py-3 text-sm',
+        'motion-feedback flex items-start gap-3 rounded-md border px-4 py-3 text-sm',
         alertStyles[variant],
         className,
       )}

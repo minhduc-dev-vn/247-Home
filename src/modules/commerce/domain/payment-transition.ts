@@ -4,7 +4,14 @@ export const paymentActions = ['CONFIRM_PAYMENT', 'REJECT_PAYMENT'] as const;
 
 export type PaymentAction = (typeof paymentActions)[number];
 export type PaymentLifecycleState =
-  'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED' | 'CANCELLED';
+  | 'CREATED'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'PAID'
+  | 'FAILED'
+  | 'REFUNDED'
+  | 'CANCELLED';
+export type ManualPaymentPolicyMethod = 'COD' | 'BANK_TRANSFER' | 'VNPAY';
 
 const paymentOperationsRoles = ['STAFF', 'MANAGER', 'ADMIN'] as const;
 
@@ -31,6 +38,7 @@ export function decidePaymentTransition(input: {
   actor: IdentityActor | null;
   action: PaymentAction;
   current: PaymentLifecycleState;
+  method: ManualPaymentPolicyMethod;
 }): PaymentTransitionDecision {
   if (!input.actor) return { allowed: false, code: 'UNAUTHENTICATED' };
   if (
@@ -41,6 +49,7 @@ export function decidePaymentTransition(input: {
     )
   )
     return { allowed: false, code: 'FORBIDDEN' };
+  if (input.method === 'VNPAY') return { allowed: false, code: 'FORBIDDEN' };
 
   const transition = transitions[input.action];
   if (input.current !== transition.current)

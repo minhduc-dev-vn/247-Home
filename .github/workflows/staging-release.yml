@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       deploy_staging:
-        description: Run migration, deploy the published digest, and validate staging
+        description: Snapshot, migrate, deploy exact digests, and validate staging
         required: true
         default: false
         type: boolean
@@ -21,9 +21,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}
   NODE_VERSION: 24.14.0
-  PNPM_VERSION: 10.32.1
+  PNPM_VERSION: 11.16.0
   RELEASE_REF: ${{ github.event.inputs.release_ref || github.ref_name }}
 
 jobs:
@@ -72,6 +71,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
       - run: pnpm audit:prod
       - run: pnpm db:migrate
       - run: pnpm db:seed
@@ -84,17 +84,23 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm build
 
-  artifact:
+  artifacts:
     needs: quality
     runs-on: ubuntu-24.04
+    environment: staging
     permissions:
       attestations: write
       contents: read
       id-token: write
-      packages: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
     outputs:
-      digest: ${{ steps.publish.outputs.digest }}
-      image: ${{ env.IMAGE_NAME }}@${{ steps.publish.outputs.digest }}
+      migration_image: ${{ steps.publish.outputs.migration_image }}
+      migration_digest: ${{ steps.publish.outputs.migration_digest }}
+      runtime_image: ${{ steps.publish.outputs.runtime_image }}
+      runtime_digest: ${{ steps.publish.outputs.runtime_digest }}
     steps:
       - name: Check out immutable release ref
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -106,80 +112,121 @@ jobs:
         run: |
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Require reviewed AWS bindings
+        shell: bash
+        run: |
+          test -n "$AWS_REGION"
+          test -n "$AWS_ROLE_ARN"
+          test -n "$ECR_REPOSITORY_URL"
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+      - name: Log in to ECR
+        uses: aws-actions/amazon-ecr-login@b040164c4934333d597f3f9c67502ff28f814e9c # v2.1.6
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-      - name: Log in to GHCR
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Generate OCI metadata
-        id: metadata
-        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: type=raw,value=${{ env.RELEASE_REF }}
-          labels: |
-            org.opencontainers.image.created=${{ steps.source.outputs.created }}
-            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
-            org.opencontainers.image.version=${{ env.RELEASE_REF }}
-      - name: Build immutable artifact locally
-        id: build
+      - name: Build runtime artifact
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
+          target: runtime
           load: true
           push: false
-          tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
+          tags: ${{ env.ECR_REPOSITORY_URL }}:${{ env.RELEASE_REF }}-runtime
           build-args: |
             APP_VERSION=${{ env.RELEASE_REF }}
             BUILD_TIMESTAMP=${{ steps.source.outputs.created }}
             GIT_SHA=${{ steps.source.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Fail on critical or high image vulnerabilities
+      - name: Build migration artifact
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          target: migration
+          load: true
+          push: false
+          tags: ${{ env.ECR_REPOSITORY_URL }}:${{ env.RELEASE_REF }}-migration
+          cache-from: type=gha
+      - name: Scan runtime image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:${{ env.RELEASE_REF }}
+          image-ref: ${{ env.ECR_REPOSITORY_URL }}:${{ env.RELEASE_REF }}-runtime
           version: v0.70.0
           format: table
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
-      - name: Generate CycloneDX SBOM
+      - name: Scan migration image
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:${{ env.RELEASE_REF }}
+          image-ref: ${{ env.ECR_REPOSITORY_URL }}:${{ env.RELEASE_REF }}-migration
+          skip-setup-trivy: true
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+      - name: Generate runtime SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.ECR_REPOSITORY_URL }}:${{ env.RELEASE_REF }}-runtime
           skip-setup-trivy: true
           format: cyclonedx
-          output: sbom.cdx.json
+          output: runtime-sbom.cdx.json
           exit-code: '0'
-      - name: Publish scanned artifact
+      - name: Generate migration SBOM
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: ${{ env.ECR_REPOSITORY_URL }}:${{ env.RELEASE_REF }}-migration
+          skip-setup-trivy: true
+          format: cyclonedx
+          output: migration-sbom.cdx.json
+          exit-code: '0'
+      - name: Publish immutable artifacts
         id: publish
         shell: bash
         run: |
-          docker push "${IMAGE_NAME}:${RELEASE_REF}"
-          repo_digest=$(docker image inspect "${IMAGE_NAME}:${RELEASE_REF}" --format '{{index .RepoDigests 0}}')
-          case "$repo_digest" in
-            "${IMAGE_NAME}@sha256:"*) ;;
-            *) echo "Registry did not return the expected digest" >&2; exit 1 ;;
-          esac
-          echo "digest=${repo_digest##*@}" >> "$GITHUB_OUTPUT"
-      - name: Attest build provenance
+          runtime_tag="${ECR_REPOSITORY_URL}:${RELEASE_REF}-runtime"
+          migration_tag="${ECR_REPOSITORY_URL}:${RELEASE_REF}-migration"
+          docker push "$runtime_tag"
+          docker push "$migration_tag"
+          runtime_repo_digest="$(docker image inspect "$runtime_tag" --format '{{index .RepoDigests 0}}')"
+          migration_repo_digest="$(docker image inspect "$migration_tag" --format '{{index .RepoDigests 0}}')"
+          case "$runtime_repo_digest" in "$ECR_REPOSITORY_URL@sha256:"*) ;; *) exit 1 ;; esac
+          case "$migration_repo_digest" in "$ECR_REPOSITORY_URL@sha256:"*) ;; *) exit 1 ;; esac
+          echo "runtime_image=$runtime_repo_digest" >> "$GITHUB_OUTPUT"
+          echo "runtime_digest=${runtime_repo_digest##*@}" >> "$GITHUB_OUTPUT"
+          echo "migration_image=$migration_repo_digest" >> "$GITHUB_OUTPUT"
+          echo "migration_digest=${migration_repo_digest##*@}" >> "$GITHUB_OUTPUT"
+      - name: Attest runtime provenance
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
+          subject-name: ${{ env.ECR_REPOSITORY_URL }}
+          subject-digest: ${{ steps.publish.outputs.runtime_digest }}
           push-to-registry: true
-      - name: Attest SBOM
+      - name: Attest runtime SBOM
         uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
-          subject-name: ${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.publish.outputs.digest }}
-          sbom-path: sbom.cdx.json
+          subject-name: ${{ env.ECR_REPOSITORY_URL }}
+          subject-digest: ${{ steps.publish.outputs.runtime_digest }}
+          sbom-path: runtime-sbom.cdx.json
+          push-to-registry: true
+      - name: Attest migration provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.ECR_REPOSITORY_URL }}
+          subject-digest: ${{ steps.publish.outputs.migration_digest }}
+          push-to-registry: true
+      - name: Attest migration SBOM
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ env.ECR_REPOSITORY_URL }}
+          subject-digest: ${{ steps.publish.outputs.migration_digest }}
+          sbom-path: migration-sbom.cdx.json
           push-to-registry: true
       - name: Record artifact identity
         shell: bash
@@ -187,44 +234,59 @@ jobs:
           {
             echo "release_ref=$RELEASE_REF"
             echo "git_sha=$(git rev-parse HEAD)"
-            echo "image=${IMAGE_NAME}@${{ steps.publish.outputs.digest }}"
+            echo "runtime_image=${{ steps.publish.outputs.runtime_image }}"
+            echo "migration_image=${{ steps.publish.outputs.migration_image }}"
           } | tee artifact-manifest.txt
-      - name: Upload artifact manifest
+      - name: Upload artifact evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: staging-artifact-manifest-${{ github.run_id }}
+          name: staging-artifacts-${{ github.run_id }}
           path: |
             artifact-manifest.txt
-            sbom.cdx.json
+            runtime-sbom.cdx.json
+            migration-sbom.cdx.json
           retention-days: 30
 
   deploy-staging:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy_staging
-    needs: artifact
+    needs: artifacts
     runs-on: ubuntu-24.04
     environment: staging
     permissions:
       contents: read
+      id-token: write
     env:
-      DATABASE_URL: ${{ secrets.STAGING_MIGRATION_DATABASE_URL }}
-      DEPLOY_IMAGE: ${{ needs.artifact.outputs.image }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      DEPLOY_IMAGE: ${{ needs.artifacts.outputs.runtime_image }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      MIGRATION_IMAGE: ${{ needs.artifacts.outputs.migration_image }}
+      MIGRATION_SECURITY_GROUP_ID: ${{ vars.MIGRATION_SECURITY_GROUP_ID }}
+      MIGRATION_SUBNET_IDS: ${{ vars.MIGRATION_SUBNET_IDS }}
+      MIGRATION_TASK_DEFINITION: ${{ vars.MIGRATION_TASK_DEFINITION }}
+      RDS_INSTANCE_IDENTIFIER: ${{ vars.RDS_INSTANCE_IDENTIFIER }}
       STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+      STAGING_ORIGIN_URL: ${{ vars.STAGING_ORIGIN_URL }}
     steps:
       - name: Check out immutable release ref
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ env.RELEASE_REF }}
-      - name: Require external staging bindings
+      - name: Require staging bindings
         shell: bash
-        env:
-          STAGING_DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
-          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
         run: |
-          test -n "$DATABASE_URL"
-          test -n "$STAGING_DEPLOY_HOOK"
-          test -n "$STAGING_DEPLOY_TOKEN"
-          test -n "$STAGING_BASE_URL"
+          for value in AWS_REGION AWS_ROLE_ARN DEPLOY_IMAGE ECS_CLUSTER ECS_SERVICE \
+            MIGRATION_IMAGE MIGRATION_SECURITY_GROUP_ID MIGRATION_SUBNET_IDS \
+            MIGRATION_TASK_DEFINITION RDS_INSTANCE_IDENTIFIER STAGING_BASE_URL; do
+            test -n "${!value}"
+          done
           case "$STAGING_BASE_URL" in https://*) ;; *) exit 1 ;; esac
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
       - name: Set up pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
@@ -235,22 +297,70 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Apply forward-only migrations with the migration role
-        run: pnpm db:migrate
-      - name: Deploy exact image digest
+      - name: Create and wait for pre-migration snapshot
+        id: snapshot
+        shell: pwsh
+        run: >-
+          ./scripts/create-rds-pre-migration-snapshot.ps1
+          -DbInstanceIdentifier $env:RDS_INSTANCE_IDENTIFIER
+          -ReleaseRef $env:RELEASE_REF
+      - name: Register exact migration image digest
+        id: migration_task
         shell: bash
+        run: ./scripts/register-ecs-migration-task.sh
+      - name: Apply forward-only migrations in the private network
+        shell: pwsh
         env:
-          STAGING_DEPLOY_HOOK: ${{ secrets.STAGING_DEPLOY_HOOK }}
-          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
-        run: |
-          payload=$(jq -n --arg image "$DEPLOY_IMAGE" --arg release "$RELEASE_REF" '{image:$image,release:$release}')
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer $STAGING_DEPLOY_TOKEN" \
-            --header "Content-Type: application/json" \
-            --data "$payload" \
-            "$STAGING_DEPLOY_HOOK"
+          REGISTERED_MIGRATION_TASK: ${{ steps.migration_task.outputs.task_definition_arn }}
+        run: >-
+          ./scripts/run-ecs-migration-task.ps1
+          -Cluster $env:ECS_CLUSTER
+          -TaskDefinition $env:REGISTERED_MIGRATION_TASK
+          -SubnetIds ($env:MIGRATION_SUBNET_IDS -split ',')
+          -SecurityGroupId $env:MIGRATION_SECURITY_GROUP_ID
+      - name: Verify database invariants in the private network
+        shell: pwsh
+        env:
+          REGISTERED_MIGRATION_TASK: ${{ steps.migration_task.outputs.task_definition_arn }}
+        run: >-
+          ./scripts/run-ecs-migration-task.ps1
+          -Cluster $env:ECS_CLUSTER
+          -TaskDefinition $env:REGISTERED_MIGRATION_TASK
+          -SubnetIds ($env:MIGRATION_SUBNET_IDS -split ',')
+          -SecurityGroupId $env:MIGRATION_SECURITY_GROUP_ID
+          -Command @('node','node_modules/tsx/dist/cli.mjs','scripts/verify-database-invariants.ts')
+      - name: Deploy exact runtime image digest
+        id: runtime
+        shell: bash
+        run: ./scripts/deploy-ecs-runtime.sh
       - name: Install browser
         run: pnpm exec playwright install --with-deps chromium
       - name: Validate deployed HTTPS staging
         run: pnpm test:e2e:staging
+      - name: Validate shared edge rate limit
+        run: pnpm verify:staging-rate-limit
+      - name: Record deployment evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "release_ref=$RELEASE_REF"
+            echo "git_sha=$(git rev-parse HEAD)"
+            echo "runtime_image=$DEPLOY_IMAGE"
+            echo "migration_image=$MIGRATION_IMAGE"
+            echo "snapshot_id=${{ steps.snapshot.outputs.snapshot_id }}"
+            echo "runtime_task_definition=${{ steps.runtime.outputs.task_definition_arn }}"
+            echo "migration_task_definition=${{ steps.migration_task.outputs.task_definition_arn }}"
+            echo "workflow_run=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } | tee deployment-evidence.txt
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-deployment-evidence-${{ github.run_id }}
+          path: |
+            deployment-evidence.txt
+            playwright-report
+            test-results
+          if-no-files-found: warn
+          retention-days: 30

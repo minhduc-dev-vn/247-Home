@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { POST as forgotPasswordPost } from '../../app/api/v1/auth/forgot-password/route';
+import { POST as registerPost } from '../../app/api/v1/auth/register/route';
 import {
   authenticateWithPassword,
   getActiveActor,
@@ -89,6 +90,65 @@ describe('identity persistence and authorization', () => {
     await expect(
       authenticateWithPassword({ email, password }),
     ).resolves.toEqual(actor);
+  });
+
+  it('creates and authenticates a customer through the registration HTTP contract', async () => {
+    const email = nextEmail();
+    const password = 'Http247!';
+    const response = await registerPost(
+      new Request('http://localhost:3000/api/v1/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'http://localhost:3000',
+        },
+        body: JSON.stringify({
+          name: 'HTTP Registration Customer',
+          email,
+          password,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    await expect(response.json()).resolves.toMatchObject({
+      data: { created: true },
+    });
+    await expect(
+      authenticateWithPassword({ email, password }),
+    ).resolves.toMatchObject({ roles: ['CUSTOMER'] });
+  });
+
+  it('handles concurrent customer registrations without duplicating the system role', async () => {
+    const emails = [nextEmail(), nextEmail()];
+    const responses = await Promise.all(
+      emails.map((email, index) =>
+        registerPost(
+          new Request('http://localhost:3000/api/v1/auth/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: 'http://localhost:3000',
+              'x-forwarded-for': `198.51.100.${index + 10}`,
+            },
+            body: JSON.stringify({
+              name: `Concurrent Customer ${index + 1}`,
+              email,
+              password: 'ConcurrentRegistrationPassword-247',
+            }),
+          }),
+        ),
+      ),
+    );
+
+    expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+    await expect(
+      prisma.role.count({ where: { code: 'CUSTOMER' } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.user.count({ where: { email: { in: emails } } }),
+    ).resolves.toBe(2);
   });
 
   it('does not return another customer profile', async () => {

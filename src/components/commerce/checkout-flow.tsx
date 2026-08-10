@@ -153,10 +153,12 @@ export function CheckoutFlow({
   cart,
   customer,
   initialAddresses,
+  onlinePaymentEnabled,
 }: {
   cart: Cart;
   customer: Customer;
   initialAddresses: Address[];
+  onlinePaymentEnabled: boolean;
 }) {
   const router = useRouter();
   const requiresInstallation = cart.items.some(
@@ -175,9 +177,9 @@ export function CheckoutFlow({
     requiresInstallation && Boolean(initialAddress?.serviceAreaId),
   );
   const [slotError, setSlotError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'BANK_TRANSFER'>(
-    'COD',
-  );
+  const [paymentMethod, setPaymentMethod] = useState<
+    'COD' | 'BANK_TRANSFER' | 'VNPAY'
+  >('COD');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(
     Boolean(
@@ -341,7 +343,10 @@ export function CheckoutFlow({
     setOrderSubmitting(true);
     idempotencyKeyRef.current ??= `checkout-${crypto.randomUUID()}`;
     try {
-      const order = await responseData<{ id: string }>(
+      const order = await responseData<{
+        id: string;
+        payment: { id: string; method: string };
+      }>(
         await fetch('/api/v1/orders', {
           method: 'POST',
           headers: {
@@ -356,6 +361,28 @@ export function CheckoutFlow({
           }),
         }),
       );
+      if (paymentMethod === 'VNPAY') {
+        try {
+          const payment = await responseData<{ paymentUrl: string }>(
+            await fetch('/api/v1/payment/create', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Idempotency-Key': `payment-${order.id}`,
+              },
+              body: JSON.stringify({
+                orderId: order.id,
+                paymentMethod: 'VNPAY',
+              }),
+            }),
+          );
+          window.location.assign(payment.paymentUrl);
+        } catch {
+          router.push(`/payment/pending?paymentId=${order.payment.id}`);
+          router.refresh();
+        }
+        return;
+      }
       router.push(`/order-confirmation/${order.id}`);
       router.refresh();
     } catch (error: unknown) {
@@ -694,30 +721,41 @@ export function CheckoutFlow({
                   label: 'Chuyển khoản thủ công',
                   value: 'BANK_TRANSFER' as const,
                 },
-              ].map((method) => (
-                <label
-                  className="flex cursor-pointer items-start gap-3 rounded-md border p-4 has-[:checked]:border-[var(--primary)] has-[:checked]:bg-[var(--primary-soft)]"
-                  key={method.value}
-                >
-                  <input
-                    checked={paymentMethod === method.value}
-                    className="mt-1 size-4 accent-[var(--primary)]"
-                    name="paymentMethod"
-                    onChange={() => {
-                      setPaymentMethod(method.value);
-                      resetCheckoutIntent();
-                    }}
-                    type="radio"
-                    value={method.value}
-                  />
-                  <span className="text-sm">
-                    <span className="block font-semibold">{method.label}</span>
-                    <span className="mt-1 block text-[var(--muted)]">
-                      {method.description}
+                {
+                  description: 'Thanh toán trực tuyến qua cổng VNPay bảo mật.',
+                  label: 'VNPay',
+                  value: 'VNPAY' as const,
+                },
+              ]
+                .filter(
+                  (method) => method.value !== 'VNPAY' || onlinePaymentEnabled,
+                )
+                .map((method) => (
+                  <label
+                    className="flex cursor-pointer items-start gap-3 rounded-md border p-4 has-[:checked]:border-[var(--primary)] has-[:checked]:bg-[var(--primary-soft)]"
+                    key={method.value}
+                  >
+                    <input
+                      checked={paymentMethod === method.value}
+                      className="mt-1 size-4 accent-[var(--primary)]"
+                      name="paymentMethod"
+                      onChange={() => {
+                        setPaymentMethod(method.value);
+                        resetCheckoutIntent();
+                      }}
+                      type="radio"
+                      value={method.value}
+                    />
+                    <span className="text-sm">
+                      <span className="block font-semibold">
+                        {method.label}
+                      </span>
+                      <span className="mt-1 block text-[var(--muted)]">
+                        {method.description}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              ))}
+                  </label>
+                ))}
             </fieldset>
           </CardContent>
         </Card>

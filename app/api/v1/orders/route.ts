@@ -56,6 +56,7 @@ export async function POST(request: Request) {
           currency: result.order.currency,
           version: result.order.version,
           payment: {
+            id: result.order.payment?.id,
             method: result.order.payment?.method,
             status: result.order.payment?.status,
             amount: result.order.payment?.amount.toString(),

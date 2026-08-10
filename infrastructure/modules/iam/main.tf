@@ -70,7 +70,10 @@ data "aws_iam_policy_document" "ecs_application" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = ["installation-evidence/*"]
+      values = [
+        "installation-evidence/*",
+        "warranty-evidence/*",
+      ]
     }
   }
 
@@ -83,7 +86,10 @@ data "aws_iam_policy_document" "ecs_application" {
       "s3:GetObjectVersion",
       "s3:PutObject",
     ]
-    resources = ["${var.s3_bucket_arn}/installation-evidence/*"]
+    resources = [
+      "${var.s3_bucket_arn}/installation-evidence/*",
+      "${var.s3_bucket_arn}/warranty-evidence/*",
+    ]
   }
 
   statement {
@@ -125,6 +131,11 @@ resource "aws_iam_role" "migration" {
   name               = "${var.name}-migration"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
   tags               = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "migration_execution" {
+  role       = aws_iam_role.migration.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 data "aws_iam_policy_document" "migration" {

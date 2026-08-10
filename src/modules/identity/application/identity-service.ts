@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Prisma, RoleCode } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { IdentityError } from '@/modules/identity/domain/errors';
 import { type IdentityActor } from '@/modules/identity/domain/roles';
@@ -10,7 +10,6 @@ import {
 } from '@/modules/identity/infrastructure/password-hasher';
 import {
   createCustomer,
-  findRoleByCode,
   findUserByEmail,
   findUserById,
   type UserWithRoles,
@@ -37,18 +36,11 @@ function toActor(user: UserWithRoles): IdentityActor {
 export async function registerCustomer(
   input: RegistrationInput,
 ): Promise<IdentityActor> {
-  const customerRole = await findRoleByCode(RoleCode.CUSTOMER);
-
-  if (!customerRole) {
-    throw new IdentityError('IDENTITY_CONFIGURATION_ERROR');
-  }
-
   try {
     const user = await createCustomer({
       name: input.name.trim(),
       email: normalizeEmail(input.email),
       passwordHash: await hashPassword(input.password),
-      customerRoleId: customerRole.id,
     });
     return toActor(user);
   } catch (error: unknown) {

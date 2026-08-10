@@ -62,7 +62,15 @@ resource "aws_wafv2_web_acl" "this" {
       }
       dynamic "block" {
         for_each = var.rate_rule_action == "block" ? [1] : []
-        content {}
+        content {
+          custom_response {
+            response_code = 429
+            response_header {
+              name  = "Retry-After"
+              value = "300"
+            }
+          }
+        }
       }
     }
 
@@ -92,7 +100,15 @@ resource "aws_wafv2_web_acl" "this" {
       }
       dynamic "block" {
         for_each = var.rate_rule_action == "block" ? [1] : []
-        content {}
+        content {
+          custom_response {
+            response_code = 429
+            response_header {
+              name  = "Retry-After"
+              value = "300"
+            }
+          }
+        }
       }
     }
 
@@ -103,16 +119,35 @@ resource "aws_wafv2_web_acl" "this" {
         limit                 = var.auth_rate_limit
 
         scope_down_statement {
-          byte_match_statement {
-            field_to_match {
-              uri_path {}
-            }
-            positional_constraint = "STARTS_WITH"
-            search_string         = "/api/v1/auth/"
+          or_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "STARTS_WITH"
+                search_string         = "/api/auth/"
 
-            text_transformation {
-              priority = 0
-              type     = "NONE"
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "STARTS_WITH"
+                search_string         = "/api/v1/auth/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
             }
           }
         }
@@ -122,6 +157,104 @@ resource "aws_wafv2_web_acl" "this" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.name}-auth-rate"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "api-mutation-rate-limit"
+    priority = 50
+
+    action {
+      dynamic "count" {
+        for_each = var.rate_rule_action == "count" ? [1] : []
+        content {}
+      }
+      dynamic "block" {
+        for_each = var.rate_rule_action == "block" ? [1] : []
+        content {
+          custom_response {
+            response_code = 429
+            response_header {
+              name  = "Retry-After"
+              value = "300"
+            }
+          }
+        }
+      }
+    }
+
+    statement {
+      rate_based_statement {
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+        limit                 = var.mutation_rate_limit
+
+        scope_down_statement {
+          and_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "STARTS_WITH"
+                search_string         = "/api/v1/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              not_statement {
+                statement {
+                  byte_match_statement {
+                    field_to_match {
+                      uri_path {}
+                    }
+                    positional_constraint = "EXACTLY"
+                    search_string         = "/api/v1/payment/webhook"
+
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+              }
+            }
+
+            statement {
+              or_statement {
+                dynamic "statement" {
+                  for_each = toset(["POST", "PUT", "PATCH", "DELETE"])
+                  content {
+                    byte_match_statement {
+                      field_to_match {
+                        method {}
+                      }
+                      positional_constraint = "EXACTLY"
+                      search_string         = statement.value
+
+                      text_transformation {
+                        priority = 0
+                        type     = "NONE"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.name}-api-mutation-rate"
       sampled_requests_enabled   = true
     }
   }

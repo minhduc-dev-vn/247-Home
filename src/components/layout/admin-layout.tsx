@@ -16,7 +16,7 @@ export function AdminLayout({
 }) {
   const navigation = getAdminNavigation(roles);
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="min-h-screen overflow-x-clip bg-[var(--background)]">
       <Header
         actions={
           <span className="hidden items-center gap-2 text-sm font-medium text-[var(--muted)] sm:flex">
@@ -32,7 +32,7 @@ export function AdminLayout({
           items={navigation}
           label="Quản trị"
         />
-        <div className="min-w-0 flex-1">{children}</div>
+        <div className="w-full min-w-0 flex-1">{children}</div>
       </div>
     </div>
   );

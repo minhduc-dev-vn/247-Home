@@ -46,7 +46,7 @@ export function ProductGallery({
           <Image
             alt={selectedImage.altText}
             className={cn(
-              'absolute inset-0 h-full w-full',
+              'motion-gallery-image absolute inset-0 h-full w-full',
               selectedImage.isDemo ? 'object-contain' : 'object-cover',
             )}
             height={900}
@@ -54,6 +54,7 @@ export function ProductGallery({
             sizes="(max-width: 1023px) 100vw, 50vw"
             src={selectedImage.src}
             width={1200}
+            key={selectedImage.id}
           />
         ) : (
           <div
@@ -78,7 +79,7 @@ export function ProductGallery({
               aria-label={`Xem ${image.altText}`}
               aria-pressed={image.id === selectedImage?.id}
               className={cn(
-                'relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border-2 bg-[var(--surface)]',
+                'relative aspect-square w-20 shrink-0 overflow-hidden rounded-md border-2 bg-[var(--surface)] transition-[border-color,transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-sm active:scale-[0.97] motion-reduce:transform-none',
                 image.id === selectedImage?.id
                   ? 'border-[var(--primary)]'
                   : 'border-transparent',

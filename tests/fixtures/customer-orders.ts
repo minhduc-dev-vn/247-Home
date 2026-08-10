@@ -53,6 +53,9 @@ export async function cleanupCustomerOrdersFixtureNamespace(namespace: string) {
     await tx.checkoutAttempt.deleteMany({
       where: { user: { email: { startsWith: userPrefix } } },
     });
+    await tx.cart.deleteMany({
+      where: { user: { email: { startsWith: userPrefix } } },
+    });
     await tx.order.deleteMany({
       where: { orderNumber: { startsWith: orderPrefix } },
     });
@@ -336,6 +339,7 @@ export async function createCustomerOrdersFixture() {
     return {
       cleanup: () => cleanupCustomerOrdersFixtureNamespace(namespace),
       namespace,
+      variantId,
       orders: { foreign, secondary: secondaryOrders, tracked },
       owner: { email: ownerEmail, id: owner.id },
       intruder: { email: intruderEmail, id: intruder.id },

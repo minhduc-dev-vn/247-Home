@@ -28,6 +28,11 @@ variable "container_image" {
   description = "Staging-proven ECR image reference pinned by sha256 digest."
 }
 
+variable "migration_container_image" {
+  type        = string
+  description = "Staging-proven migration image reference pinned by sha256 digest."
+}
+
 variable "alb_certificate_arn" {
   type        = string
   description = "Regional ACM certificate ARN for the ALB origin."
@@ -57,6 +62,21 @@ variable "github_oidc_subjects" {
 variable "ses_identity_arn" {
   type        = string
   description = "Verified SES identity ARN; no credential is stored in Terraform."
+}
+
+variable "vnpay_payment_url" {
+  type        = string
+  description = "Approved VNPay production payment endpoint."
+}
+
+variable "vnpay_query_url" {
+  type        = string
+  description = "Approved VNPay production QueryDR endpoint."
+}
+
+variable "vnpay_return_url" {
+  type        = string
+  description = "Canonical HTTPS VNPay browser return URL."
 }
 
 variable "alarm_email" {

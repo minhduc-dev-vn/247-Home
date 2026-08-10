@@ -100,6 +100,9 @@ test('supports primary navigation and product calls to action', async ({
 
   await page.getByRole('link', { name: 'Khám phá sản phẩm' }).click();
   await expect(page).toHaveURL(/\/products$/);
+  await expect(
+    page.getByRole('link', { name: 'Sản phẩm', exact: true }).first(),
+  ).toHaveAttribute('aria-current', 'page');
 
   await page.goto('/');
   const firstCard = page.getByTestId('featured-product-card').first();
@@ -108,6 +111,33 @@ test('supports primary navigation and product calls to action', async ({
   expect(destination).toMatch(/^\/products\//);
   await detailLink.click();
   await expect(page).toHaveURL(new RegExp(`${destination}$`));
+});
+
+test('reveals sections accessibly and honors reduced motion', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+
+  const reveal = page.locator('.motion-reveal').first();
+  await expect(reveal).toHaveAttribute('data-motion-visible', 'true');
+  const styles = await reveal.evaluate((element) => {
+    const computed = window.getComputedStyle(element);
+    return {
+      animationDuration: computed.animationDuration,
+      opacity: computed.opacity,
+      transform: computed.transform,
+      transitionDuration: computed.transitionDuration,
+    };
+  });
+  expect(styles.opacity).toBe('1');
+  expect(styles.transform).toBe('none');
+  for (const duration of [
+    ...styles.animationDuration.split(','),
+    ...styles.transitionDuration.split(','),
+  ]) {
+    expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
+  }
 });
 
 test('has no horizontal overflow at supported storefront widths', async ({

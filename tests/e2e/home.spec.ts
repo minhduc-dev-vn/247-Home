@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { productDemoImages } from '../../src/components/catalog/product-demo-images';
+
 test('shows the customer storefront and health endpoint', async ({
   page,
   request,
@@ -22,6 +24,54 @@ test('shows the customer storefront and health endpoint', async ({
   await expect(response.json()).resolves.toMatchObject({
     data: { status: 'ok' },
   });
+});
+
+test('serves required storefront and authentication images', async ({
+  page,
+  request,
+}) => {
+  const productAssetPaths = Object.values(productDemoImages)
+    .flat()
+    .map((image) => image.src);
+  const assetPaths = ['/images/smart-home-entryway.png', ...productAssetPaths];
+  expect(assetPaths).toHaveLength(49);
+
+  for (const assetPath of assetPaths) {
+    const response = await request.get(assetPath);
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('image/png');
+    expect((await response.body()).byteLength).toBeGreaterThan(10_000);
+  }
+
+  await page.goto('/login');
+  const loginImage = page.locator('main img').first();
+  await expect(loginImage).toBeVisible();
+  await expect
+    .poll(() =>
+      loginImage.evaluate(
+        (image) =>
+          (image as HTMLImageElement).complete &&
+          (image as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+
+  await page.goto('/');
+  const productImage = page
+    .getByTestId('featured-product-card')
+    .first()
+    .locator('img')
+    .first();
+  await expect(productImage).toBeVisible();
+  await expect
+    .poll(() =>
+      productImage.evaluate(
+        (image) =>
+          (image as HTMLImageElement).complete &&
+          (image as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
 });
 
 test('prevents a signed-in customer from accessing the admin page', async ({

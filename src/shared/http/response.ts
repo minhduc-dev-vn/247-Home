@@ -31,14 +31,19 @@ function responseHeaders(
   return headers;
 }
 
-export function getRequestId(request: Request): string {
+// The parameter is kept so existing call sites stay valid; the request is
+// deliberately not consulted, because a client-supplied identifier must never
+// become the identifier this server reports or logs as its own.
+export function getRequestId(_request?: Request): string {
+  return `req_${crypto.randomUUID()}`;
+}
+
+export function getClientRequestId(request: Request): string | undefined {
   const incomingRequestId = request.headers.get('x-request-id');
 
-  if (incomingRequestId && /^[A-Za-z0-9_-]{1,128}$/.test(incomingRequestId)) {
-    return incomingRequestId;
-  }
-
-  return `req_${crypto.randomUUID()}`;
+  return incomingRequestId && /^[A-Za-z0-9_-]{1,128}$/.test(incomingRequestId)
+    ? incomingRequestId
+    : undefined;
 }
 
 export function createSuccessResponse<T>(

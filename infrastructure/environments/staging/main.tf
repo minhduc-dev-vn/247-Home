@@ -12,6 +12,7 @@ module "platform" {
   vpc_cidr                               = local.vpc_cidr
   nat_gateway_mode                       = local.nat_gateway_mode
   container_image                        = var.container_image
+  migration_container_image              = var.migration_container_image
   ecs_cpu                                = local.ecs.cpu
   ecs_memory                             = local.ecs.memory
   ecs_desired_count                      = local.ecs.desired_count
@@ -24,9 +25,10 @@ module "platform" {
   origin_verify_header_value             = var.origin_verify_header_value
   domain_aliases                         = local.domain_aliases
   cloudfront_price_class                 = "PriceClass_200"
-  waf_rate_rule_action                   = "count"
+  waf_rate_rule_action                   = var.waf_rate_rule_action
   waf_baseline_rate_limit                = 2000
   waf_auth_rate_limit                    = 100
+  waf_mutation_rate_limit                = 600
   asset_bucket_name                      = local.asset_bucket
   asset_noncurrent_expiration_days       = 90
   ecr_retain_tagged_images               = 30
@@ -41,6 +43,9 @@ module "platform" {
   log_retention_days                     = 30
   github_oidc_subjects                   = var.github_oidc_subjects
   ses_identity_arn                       = var.ses_identity_arn
+  vnpay_payment_url                      = var.vnpay_payment_url
+  vnpay_query_url                        = var.vnpay_query_url
+  vnpay_return_url                       = var.vnpay_return_url
   alarm_email                            = var.alarm_email
   additional_tags                        = var.additional_tags
 }
